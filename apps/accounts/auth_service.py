@@ -2,7 +2,7 @@ from django.contrib.auth import authenticate
 from django.db import transaction
 from django.utils import timezone
 from datetime import timedelta
-from apps.accounts.helpers import normalize_phone_number, ResponseBuilder, generate_otp
+from apps.accounts.helpers import check_recent_verification, normalize_phone_number, ResponseBuilder, generate_otp
 from apps.accounts.schema import ShopRegistrationSchema
 from rest_framework_simplejwt.tokens import RefreshToken
 from .models import User, OTP
@@ -103,6 +103,14 @@ class AuthService:
             )
             if not token_valid:
                 return ResponseBuilder.error(token_message, code=401)
+
+            # Check if phone number was verified within last 10 minutes
+            verification_check = check_recent_verification(verified_phone)
+            if not verification_check['was_verified_recently']:
+                return ResponseBuilder.error(
+                    'Registration session expired. Please verify your phone number again to continue.',
+                    code=429
+                )
 
             # Check if user already exists
             if User.objects.filter(phone_number=verified_phone).exists():

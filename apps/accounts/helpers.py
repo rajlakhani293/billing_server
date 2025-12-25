@@ -4,7 +4,31 @@ from phonenumbers import parse as parse_phone_number, is_valid_number
 from datetime import timedelta
 from django.utils import timezone
 import pyotp
-from .models import OTP
+from .models import OTP, User
+
+
+def check_recent_verification(phone_number: str) -> dict:
+    """Check if phone number was verified in the last 10 minutes"""
+    try:
+        # Normalize phone number
+        normalized_phone = normalize_phone_number(phone_number)
+        
+        ten_minutes_ago = timezone.now() - timedelta(minutes=10)
+        recent_user = User.objects.filter(
+            phone_number=normalized_phone,
+            is_verified=True,
+            updated_at__gte=ten_minutes_ago  
+        ).first()
+        
+        if recent_user:
+            return {
+                'was_verified_recently': True
+            }
+        
+        return {'was_verified_recently': False}
+        
+    except Exception as e:
+        return {'was_verified_recently': False}
 
 
 class ResponseBuilder:
