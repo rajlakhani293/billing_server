@@ -1,6 +1,5 @@
 from ninja import Router
 from django.contrib.auth import get_user_model
-from ninja.errors import HttpError
 from .schema import (
     SendOTPSchema,
     VerifyOTPSchema,
@@ -18,11 +17,14 @@ from .schema import (
     MenuMasterResponseSchema,
     MenuModuleMasterCreateSchema,
     MenuModuleMasterUpdateSchema,
-    MenuModuleMasterResponseSchema
+    MenuModuleMasterResponseSchema,
+    ResetOTPSchema,
+    BlockedUsersResponseSchema,
+    ResetOTPResponseSchema
 )
-from .auth_service import AuthService, ShopService
+from .auth_service import AuthService, OTPLimitService
 from .menu_service import MenuService, MenuModuleService
-from apps.core.auth import BearerAuth
+from apps.core.auth import AuthBearer
 
 User = get_user_model()
 
@@ -33,63 +35,80 @@ auth_router = Router(tags=['Authentication'])
 # ================================================================= ================================================================= =================================================================
 
 # Send Otp for Signup
-# @auth_router.post('/send-otp', response={200: OTPResponseSchema, 400: ErrorResponseSchema})
-# def send_otp(request, payload: SendOTPSchema):
-#     return AuthService.send_otp(payload.phone_number)
-
 @auth_router.post('/send-otp', response={200: OTPResponseSchema, 400: ErrorResponseSchema})
 def send_otp(request, payload: SendOTPSchema):
-    try:
-        data = AuthService.send_otp(payload.phone_number)
-        return 200, {"success": True, "message": "Sent", "data": data}
-    except Exception as e:
-        return 400, {"success": False, "message": str(e), "data": None}
+    result = AuthService.send_otp(payload.phone_number)
+    
+    if result['success']:
+        return 200, result
+    else:
+        return 400, result
 
 # Verify Otp
 @auth_router.post('/verify-otp', response={200: SuccessResponseSchema, 400: ErrorResponseSchema})
 def verify_otp(request, payload: VerifyOTPSchema):
-    return AuthService.verify_otp(payload.dict())
+    result = AuthService.verify_otp(payload.dict())
+    
+    if result['success']:
+        return 200, result
+    else:
+        return 400, result
 
 # Register Shop
 @auth_router.post('/register-shop', response={200: RegistrationResponseSchema, 400: ErrorResponseSchema})
 def register_shop(request, payload: ShopRegistrationSchema):
-    return ShopService.register_shop(request, payload)
-
-# auth_router.post("/register-shop")(ShopService.register_shop)
-
-# auth_router.post(
-#     "/register-shop", 
-#     response={201: RegistrationResponseSchema, 400: ErrorResponseSchema}
-# )(ShopService.register_shop)
-
+    result = AuthService.register_shop(request, payload)
+    
+    if result['success']:
+        return 200, result
+    else:
+        return 400, result
 
 # Send OTP for Login
 @auth_router.post('/send-login-otp', response={200: OTPResponseSchema, 400: ErrorResponseSchema})
 def send_login_otp(request, payload: SendOTPSchema):
-    return ShopService.send_login_otp(payload.phone_number)
+    result = AuthService.send_login_otp(payload.phone_number)
+    
+    if result['success']:
+        return 200, result
+    else:
+        return 400, result
 
 # Login
 @auth_router.post('/login', response={200: TokenResponseSchema, 400: ErrorResponseSchema})
 def login(request, payload: LoginSchema):
-    return ShopService.login(payload.phone_number, payload.email, payload.password, payload.otp_code)
+    result = AuthService.login(payload.dict())
+    
+    if result['success']:
+        return 200, result
+    else:
+        return 400, result
 
 # Logout
-@auth_router.post('/logout', response={200: SuccessResponseSchema, 400: ErrorResponseSchema}, auth=BearerAuth())
+@auth_router.post('/logout', response={200: SuccessResponseSchema, 400: ErrorResponseSchema}, auth=AuthBearer())
 def logout(request, payload: LogoutSchema):
-    return ShopService.logout(payload.refresh)
+    return AuthService.logout(payload.refresh)
 
 # Session Data
-@auth_router.get('/session-data', response={200: SessionDataSchema, 400: ErrorResponseSchema}, auth=BearerAuth())
+@auth_router.get('/session-data', response={200: SessionDataSchema, 400: ErrorResponseSchema}, auth=AuthBearer())
 def session_data(request):
-    user = request.auth
-    if not user:
-        return {
-            'success': False,
-            'code': 400,
-            'message': 'Authentication required',
-            'data': None
-        }
-    return ShopService.get_session_data(user)
+    user = request.auth 
+    return AuthService.get_session_data(user)
+
+
+# ================================================================= ================================================================= =================================================================
+# OTP Limit Management APIs
+# ================================================================= ================================================================= =================================================================
+
+# Get all users with OTP limit reached (blocked users)
+@auth_router.get('/blocked-users', response={200: BlockedUsersResponseSchema, 400: ErrorResponseSchema})
+def get_blocked_users(request):
+    return OTPLimitService.get_blocked_users()
+
+# Reset OTP timer for a specific user
+@auth_router.post('/reset-otp-limit', response={200: ResetOTPResponseSchema, 400: ErrorResponseSchema, 404: ErrorResponseSchema})
+def reset_otp_limit(request, payload: ResetOTPSchema):
+    return OTPLimitService.reset_otp_limit(payload.phone_number)
 
 
 # ================================================================= ================================================================= =================================================================

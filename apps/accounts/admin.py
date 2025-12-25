@@ -32,14 +32,14 @@ class UserAdmin(BaseUserAdmin):
 
 @admin.register(OTP)
 class OTPAdmin(admin.ModelAdmin):
-    list_display = ['phone_number', 'email', 'otp_code', 'otp_type', 'is_verified', 'attempts', 'blocked_until', 'created_at']
+    list_display = ['phone_number', 'otp_code', 'otp_type', 'is_verified', 'attempts', 'blocked_until', 'created_at']
     list_filter = ['otp_type', 'is_verified', 'created_at']
-    search_fields = ['phone_number', 'email', 'otp_code']
+    search_fields = ['phone_number', 'otp_code']
     ordering = ['-created_at']
     readonly_fields = ['id', 'created_at', 'updated_at']
 
     fieldsets = (
-        ('Contact Info', {'fields': ('phone_number', 'email')}),
+        ('Contact Info', {'fields': ('phone_number',)}),
         ('OTP Details', {'fields': ('otp_code', 'otp_type', 'is_verified')}),
         ('Rate Limiting', {'fields': ('attempts', 'blocked_until')}),
         ('Timestamps', {'fields': ('created_at', 'updated_at')}),

@@ -245,3 +245,25 @@ class MenuModuleMasterResponseSchema(Schema):
     created_at: datetime
     updated_at: datetime
     code: int = 200
+
+
+# OTP Limit Management Schemas
+class ResetOTPSchema(Schema):
+    phone_number: str
+
+
+class BlockedUserDataSchema(Schema):
+    phone_number: str
+    user_name: Optional[str] = None
+    email: Optional[str] = None
+    blocked_until: datetime
+    remaining_minutes: int
+    otp_attempts: int
+
+
+class BlockedUsersResponseSchema(BaseResponseSchema):
+    data: list[BlockedUserDataSchema]
+
+
+class ResetOTPResponseSchema(BaseResponseSchema):
+    data: Optional[dict] = None

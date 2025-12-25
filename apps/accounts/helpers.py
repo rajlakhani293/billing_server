@@ -1,4 +1,34 @@
 from typing import Tuple, Any, Dict, Optional
+import re
+from phonenumbers import parse as parse_phone_number, is_valid_number
+from datetime import timedelta
+from django.utils import timezone
+import pyotp
+from .models import OTP
+
+
+class ResponseBuilder:
+    """Standardized response builder for API responses"""
+    
+    @staticmethod
+    def success(message: str, data=None, code: int = 200) -> dict:
+        """Return success response"""
+        return {
+            'success': True,
+            'code': code,
+            'message': message,
+            'data': data
+        }
+    
+    @staticmethod
+    def error(message: str, data=None, code: int = 400) -> dict:
+        """Return error response"""
+        return {
+            'success': False,
+            'code': code,
+            'message': message,
+            'data': data
+        }
 
 
 def handle_response(result: Dict[str, Any], success_key: str = 'success') -> Tuple[int, Dict[str, Any]]:
@@ -235,3 +265,33 @@ def normalize_phone_number(phone_number: str) -> str:
             return phone_number
         except Exception as e:
             raise ValueError(f'Invalid phone number format: {str(e)}')
+
+
+def generate_otp(phone_number: str, validity_minutes: int = 5, otp_type: str = 'LOGIN'):
+    """Generate OTP with rate limiting - block for 1 hour if 3 OTPs requested within last hour"""
+    one_hour_ago = timezone.now() - timedelta(hours=1)
+    
+    # Count OTPs requested in the last hour
+    request_count = OTP.objects.filter(
+        phone_number=phone_number,
+        created_at__gte=one_hour_ago
+    ).count()
+
+    if request_count >= 3:
+        # Update the latest record to reflect the block time if not already set
+        recent = OTP.objects.filter(phone_number=phone_number).first()
+        if recent and not recent.blocked_until:
+            recent.blocked_until = timezone.now() + timedelta(hours=1)
+            recent.save()
+        raise Exception("Limit reached. You requested 3 OTPs. Try again after 1 hour.")
+
+    # Generate new OTP
+    secret = pyotp.random_base32()
+    totp = pyotp.TOTP(secret, digits=6, interval=validity_minutes * 60)
+    otp_code = totp.now()
+
+    return OTP.objects.create(
+        phone_number=phone_number,
+        otp_code=otp_code,
+        otp_type=otp_type
+    )

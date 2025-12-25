@@ -82,7 +82,6 @@ class OTP(UUIDModel, TimestampedModel):
     """OTP model for phone verification with rate limiting"""
 
     phone_number = models.CharField(max_length=15, blank=True, null=True)
-    email = models.EmailField(max_length=255, blank=True, null=True)
     otp_code = models.CharField(max_length=6, help_text='6-digit OTP code')
     otp_type = models.CharField(
         max_length=50,
@@ -93,7 +92,7 @@ class OTP(UUIDModel, TimestampedModel):
         default='LOGIN',
         help_text='Purpose of OTP'
     )
-    attempts = models.IntegerField(default=0, help_text='Number of OTP verification attempts')
+    attempts = models.IntegerField(default=0)
     blocked_until = models.DateTimeField(null=True, blank=True, help_text='User blocked from OTP service until this time')
     is_verified = models.BooleanField(default=False, help_text='Whether OTP has been verified')
 
@@ -136,68 +135,9 @@ class OTP(UUIDModel, TimestampedModel):
             minutes = remaining // 60
             raise Exception(f"You have reached the OTP service limit. Try after {minutes} minutes.")
 
-        self.attempts += 1
+        return self.otp_code == otp_code
 
-        # Block user if attempts >= 3
-        if self.attempts >= 3:
-            self.blocked_until = timezone.now() + timedelta(hours=1)
-
-        self.save()
-
-        if self.otp_code == otp_code:
-            # Mark OTP as verified instead of deleting
-            self.is_verified = True
-            self.save()
-            return True
-
-        return False
-
-    @classmethod
-    def generate_otp(cls, phone_number, validity_minutes=5):
-        """Generate a new OTP with simple limit - 3 requests then 1-hour block"""
-        # Check if user is currently blocked
-        recent_otp = cls.objects.filter(
-            phone_number=phone_number
-        ).order_by('-created_at').first()
-
-        if recent_otp and recent_otp.is_blocked():
-            remaining = recent_otp.get_block_remaining_time()
-            minutes = remaining // 60
-            raise Exception(f"OTP limit reached. Try after {minutes} minutes.")
-
-        # Count total OTP requests for this phone number
-        request_count = cls.objects.filter(
-            phone_number=phone_number
-        ).count()
-
-        # Block for 1 hour after 3 requests
-        if request_count >= 3:
-            # Create or update block
-            if recent_otp:
-                recent_otp.blocked_until = timezone.now() + timedelta(hours=1)
-                recent_otp.save()
-            else:
-                # Create a dummy blocked record
-                cls.objects.create(
-                    phone_number=phone_number,
-                    otp_code="BLOCKED",
-                    blocked_until=timezone.now() + timedelta(hours=1)
-                )
-            raise Exception("OTP limit reached. Try after 1 hour.")
-
-        # Generate new OTP (don't delete previous ones to maintain count)
-        secret = pyotp.random_base32()
-        totp = pyotp.TOTP(secret, digits=6, interval=validity_minutes * 60)
-        otp_code = totp.now()
-
-        otp_instance = cls.objects.create(
-            phone_number=phone_number,
-            otp_code=otp_code
-        )
-
-        return otp_instance
-
-
+        
 class RolePermission(UUIDModel, TimestampedModel):
     role_name = models.CharField(max_length=150, blank=False, null=False)
     permissions = models.JSONField(default=list, blank=True, help_text='List of permissions user has access to')
