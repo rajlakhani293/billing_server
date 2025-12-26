@@ -1,7 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from apps.core.models import TimestampedModel, UUIDModel
-import pyotp
 from datetime import timedelta
 from django.utils import timezone
 from cities_light.models import Country, Region, City

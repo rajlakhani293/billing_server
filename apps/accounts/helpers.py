@@ -14,13 +14,15 @@ def check_recent_verification(phone_number: str) -> dict:
         normalized_phone = normalize_phone_number(phone_number)
         
         ten_minutes_ago = timezone.now() - timedelta(minutes=10)
-        recent_user = User.objects.filter(
+        
+        # Check if there's a verified OTP within the last 10 minutes
+        recent_otp = OTP.objects.filter(
             phone_number=normalized_phone,
             is_verified=True,
             updated_at__gte=ten_minutes_ago  
         ).first()
         
-        if recent_user:
+        if recent_otp:
             return {
                 'was_verified_recently': True
             }

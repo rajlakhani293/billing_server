@@ -8,10 +8,11 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from .models import User, OTP
 from apps.shops.models import Shop
 import re
+import random
+import string
 from django.db import transaction
 import jwt
 from django.conf import settings
-
 
 class AuthService:
 
@@ -60,6 +61,9 @@ class AuthService:
 
             # Verify OTP
             if otp_instance.verify(payload['otp_code']):               
+                # Mark OTP as verified
+                otp_instance.is_verified = True
+                otp_instance.save()
                 
                 registration_token = jwt.encode(
                     {
@@ -333,6 +337,40 @@ class AuthService:
 class ShopService:
     
     @staticmethod
+    def generate_shop_code(shop_name: str) -> str:
+        """Generate unique shop code with industry best practices"""
+        
+        # Clean and normalize shop name
+        clean_name = re.sub(r'[^\w\s]', '', shop_name)
+        clean_name = re.sub(r'\s+', '', clean_name)
+        
+        # Take first 6 characters of shop name (uppercase)
+        prefix = clean_name[:6].upper()
+        
+        # Generate random 4-digit suffix
+        suffix = ''.join(random.choices(string.digits, k=4))
+        
+        # Combine to create shop code
+        shop_code = f"{prefix}{suffix}"
+        
+        # Ensure uniqueness, regenerate if exists
+        attempts = 0
+        max_attempts = 10
+        
+        while Shop.objects.filter(shop_code=shop_code).exists() and attempts < max_attempts:
+            suffix = ''.join(random.choices(string.digits, k=4))
+            shop_code = f"{prefix}{suffix}"
+            attempts += 1
+        
+        if attempts >= max_attempts:
+            # Fallback to timestamp-based code
+            import time
+            timestamp = str(int(time.time()))[-6:]
+            shop_code = f"SHOP{timestamp}"
+        
+        return shop_code
+    
+    @staticmethod
     def _validate_registration_data(data: dict) -> tuple[bool, dict]:
         """Validate required registration fields"""
         required_fields = {
@@ -347,6 +385,20 @@ class ShopService:
         for field, label in required_fields.items():
             if not data.get(field):
                 errors[field] = f"{label} is required"
+
+        # Validate city, state, country existence
+        if data.get('city'):
+            from cities_light.models import City, Region, Country
+            if not City.objects.filter(id=data['city']).exists():
+                errors['city'] = 'Invalid city ID'
+        
+        if data.get('state'):
+            if not Region.objects.filter(id=data['state']).exists():
+                errors['state'] = 'Invalid state ID'
+        
+        if data.get('country'):
+            if not Country.objects.filter(id=data['country']).exists():
+                errors['country'] = 'Invalid country ID'
 
         return (len(errors) == 0, errors)
     
@@ -377,15 +429,29 @@ class ShopService:
             phone_number=phone_number,
             user_name=data["shop_name"],
             email=data.get("email"),
-            is_verified=True
+            country_id=data.get("country"),
+            state_id=data.get("state"),
+            city_id=data.get("city"),
+            address=data.get("address"),
+            pincode=data.get("pincode"),
+            is_verified=True,
+            is_superuser=True,
+            is_staff=True
         )
 
         if data.get("password"):
             user.set_password(data["password"])
             user.save()
 
+        # Generate unique shop code
+        shop_code = ShopService.generate_shop_code(data["shop_name"])
+        
+        # Check if this is the first shop for this user
+        existing_shops_count = Shop.objects.filter(owner=user).count()
+        is_first_shop = existing_shops_count == 0
+
         shop = Shop.objects.create(
-            shop_code=data.get("shop_code"),
+            shop_code=shop_code,
             shop_name=data["shop_name"],
             legal_name=data.get("legal_name"),
             business_type_id=data.get("business_type_id", 0),
@@ -398,7 +464,8 @@ class ShopService:
             city_id=data["city"],
             phone_number=phone_number,
             email=data.get("email"),
-            default_shop=data.get("default_shop", 0)
+            default_shop=1 if is_first_shop else 0,  # First shop becomes default
+            owner=user
         )
 
         user.primary_shop = shop
@@ -417,14 +484,118 @@ class ShopService:
         return ResponseBuilder.success(
             'Shop registered successfully',
             {
-                "user_id": str(user.id),
-                "phone_number": user.phone_number,
-                "email": user.email,
-                "user_name": user.user_name,
-                "has_password": bool(user.password)
+                "user": {
+                    "id": str(user.id),
+                    "phone_number": user.phone_number,
+                    "email": user.email,
+                    "user_name": user.user_name,
+                    "is_verified": user.is_verified,
+                    "is_staff": user.is_staff,
+                    "has_password": bool(user.password),
+                    "role": getattr(user, 'role', None)
+                },
+                "shop": {
+                    "id": str(shop.id),
+                    "shop_code": shop.shop_code,
+                    "shop_name": shop.shop_name,
+                    "legal_name": shop.legal_name,
+                    "business_type_id": shop.business_type_id,
+                    "email": shop.email,
+                    "phone_number": shop.phone_number,
+                    "tax_no": shop.tax_no,
+                    "pan_no": shop.pan_no,
+                    "address": shop.address,
+                    "pincode": shop.pincode,
+                    "city": shop.city.id if shop.city else None,
+                    "state": shop.state.id if shop.state else None,
+                    "country": shop.country.id if shop.country else None,
+                    "logo_image": shop.logo_image,
+                    "website_url": shop.website_url,
+                    "default_shop": shop.default_shop,
+                    "status": shop.status,
+                    "created_at": shop.created_at
+                },
+                "tokens": {
+                    "access": str(refresh.access_token),
+                    "refresh": str(refresh),
+                    "user_id": str(user.id),
+                    "phone_number": user.phone_number,
+                    "email": user.email,
+                    "has_password": bool(user.password)
+                }
             },
-            code=201
+            code=200
         )
+
+
+class LocationService:
+    
+    @staticmethod
+    def get_countries() -> dict:
+        """Get all available countries"""
+        try:
+            from cities_light.models import Country
+            countries = Country.objects.all().order_by('name')
+            
+            return ResponseBuilder.success(
+                'Countries retrieved successfully',
+                [
+                    {
+                        'id': country.id,
+                        'name': country.name,
+                        'code': country.code2
+                    } for country in countries
+                ]
+            )
+        except Exception as e:
+            return ResponseBuilder.error(f'Failed to get countries: {str(e)}')
+    
+    @staticmethod
+    def get_states(country_id: int = None) -> dict:
+        """Get states by country or all states"""
+        try:
+            from cities_light.models import Region
+            if country_id:
+                states = Region.objects.filter(country_id=country_id).order_by('name')
+            else:
+                states = Region.objects.all().order_by('name')
+            
+            return ResponseBuilder.success(
+                'States retrieved successfully',
+                [
+                    {
+                        'id': state.id,
+                        'name': state.name,
+                        'country_id': state.country_id
+                    } for state in states
+                ]
+            )
+        except Exception as e:
+            return ResponseBuilder.error(f'Failed to get states: {str(e)}')
+    
+    @staticmethod
+    def get_cities(state_id: int = None) -> dict:
+        """Get cities by state or all cities"""
+        try:
+            from cities_light.models import City
+            if state_id:
+                cities = City.objects.filter(region_id=state_id).order_by('name')
+            else:
+                cities = City.objects.all().order_by('name')
+            
+            return ResponseBuilder.success(
+                'Cities retrieved successfully',
+                [
+                    {
+                        'id': city.id,
+                        'name': city.name,
+                        'state_id': city.region_id,
+                        'country_id': city.country_id
+                    } for city in cities
+                ]
+            )
+        except Exception as e:
+            return ResponseBuilder.error(f'Failed to get cities: {str(e)}')
 
 
 class OTPLimitService:

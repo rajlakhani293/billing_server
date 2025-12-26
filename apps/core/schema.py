@@ -11,35 +11,28 @@ class BaseResponseSchema(Schema):
 class CountryDataSchema(Schema):
     id: int
     name: str
-    code2: str
-    code3: str
 
 
-class CountryResponseSchema(BaseResponseSchema):
-    data: CountryDataSchema
+class CountryListResponseSchema(BaseResponseSchema):
+    data: List[CountryDataSchema]
 
 
 class RegionDataSchema(Schema):
     id: int
     name: str
-    geoname_code: str
-    country_id: int
 
 
-class RegionResponseSchema(BaseResponseSchema):
-    data: RegionDataSchema
+class RegionListResponseSchema(BaseResponseSchema):
+    data: List[RegionDataSchema]
 
 
 class CityDataSchema(Schema):
     id: int
     name: str
-    geoname_id: int
-    region_id: int
 
 
-class CityResponseSchema(BaseResponseSchema):
-    data: CityDataSchema
-
+class CityListResponseSchema(BaseResponseSchema):
+    data: List[CityDataSchema]
 
 class ErrorDataSchema(Schema):
     details: Optional[str] = None
