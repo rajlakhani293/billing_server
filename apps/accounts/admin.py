@@ -5,7 +5,7 @@ from .models import User, OTP, RolePermission, MenuMaster, MenuModuleMaster
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
-    list_display = ["id",'phone_number', 'user_name', 'email', 'is_verified', 'is_active', 'is_staff', 'user_lock', 'status', 'created_at']
+    list_display = ['id','phone_number', 'user_name', 'email', 'is_verified', 'is_active', 'is_staff', 'user_lock', 'status', 'created_at']
     list_filter = ['is_verified', 'is_active', 'is_staff', 'user_lock', 'status', 'created_at']
     search_fields = ['phone_number', 'email', 'user_name']
     ordering = ['-created_at']
@@ -13,7 +13,7 @@ class UserAdmin(BaseUserAdmin):
 
     fieldsets = (
         (None, {'fields': ('phone_number', 'password')}),
-        ('Personal Info', {'fields': ('email', 'user_name')}),
+        ('Personal Info', {'fields': ('id','email', 'user_name')}),
         ('Address Info', {'fields': ('address', 'country', 'state', 'city', 'pincode')}),
         ('Shop Info', {'fields': ('role', 'shops', 'primary_shop', 'permissions')}),
         ('Permissions', {'fields': ('is_verified', 'is_active', 'is_staff', 'is_superuser', 'user_lock', 'status', 'groups', 'user_permissions')}),
@@ -27,7 +27,7 @@ class UserAdmin(BaseUserAdmin):
         }),
     )
 
-    readonly_fields = ['created_at', 'updated_at', 'last_login']
+    readonly_fields = ['id', 'created_at', 'updated_at', 'last_login']
 
 
 @admin.register(OTP)

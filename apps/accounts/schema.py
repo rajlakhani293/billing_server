@@ -144,6 +144,10 @@ class SuccessResponseSchema(BaseResponseSchema):
     data: Optional[dict] = None
 
 
+class SessionDataRequestSchema(Schema):
+    user_id: str
+
+
 class SessionDataSchema(BaseResponseSchema):
     data: dict  # Will contain user, shops, primary_shop, role, permissions
 

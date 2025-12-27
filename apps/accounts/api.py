@@ -11,6 +11,7 @@ from .schema import (
     TokenResponseSchema,
     SuccessResponseSchema,
     ErrorResponseSchema,
+    SessionDataRequestSchema,
     SessionDataSchema,
     MenuMasterCreateSchema,
     MenuMasterUpdateSchema,
@@ -90,10 +91,14 @@ def logout(request, payload: LogoutSchema):
     return AuthService.logout(payload.refresh)
 
 # Session Data
-@auth_router.get('/session-data', response={200: SessionDataSchema, 400: ErrorResponseSchema}, auth=AuthBearer())
-def session_data(request):
-    user = request.auth 
-    return AuthService.get_session_data(user)
+@auth_router.post('/session-data', response={200: SessionDataSchema, 400: ErrorResponseSchema}, auth=AuthBearer())
+def session_data(request, payload: SessionDataRequestSchema):
+    result = AuthService.get_session_data(payload.dict())
+
+    if result['success']:
+        return 200, result
+    else:
+        return 400, result
 
 
 # ================================================================= ================================================================= =================================================================
