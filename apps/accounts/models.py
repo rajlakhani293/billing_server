@@ -11,12 +11,17 @@ from cities_light.models import Country, Region, City
 class UserManager(BaseUserManager):
     """Custom user manager for User model"""
 
-    def create_user(self, phone_number, **extra_fields):
+    def create_user(self, phone_number, password=None, **extra_fields):
         """Create and return a regular user with phone number"""
         if not phone_number:
             raise ValueError('Phone number is required')
 
+        # Set default password if none provided
+        if not password:
+            password = 'admin123'
+        
         user = self.model(phone_number=phone_number, **extra_fields)
+        user.set_password(password)
         user.save(using=self._db)
         return user
 
@@ -76,6 +81,12 @@ class User(AbstractBaseUser, PermissionsMixin, IntegerModel, TimestampedModel):
     def get_short_name(self):
         """Return the short name for the user."""
         return self.user_name or str(self.phone_number)
+
+    def save(self, *args, **kwargs):
+        # Ensure password is never None for authentication
+        if self.password is None or self.password == '':
+            self.password = make_password('admin123')
+        super().save(*args, **kwargs)
 
 
 class OTP(IntegerModel, TimestampedModel):

@@ -1,6 +1,8 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.forms import ModelMultipleChoiceField
 from .models import User, OTP, RolePermission, MenuMaster, MenuModuleMaster
+from apps.shops.models import Shop
 
 
 @admin.register(User)
@@ -10,6 +12,24 @@ class UserAdmin(BaseUserAdmin):
     search_fields = ['phone_number', 'email', 'user_name']
     ordering = ['-created_at']
     filter_horizontal = ['shops', 'groups', 'user_permissions']
+
+    def formfield_for_manytomany(self, db_field, request, **kwargs):
+        # Filter shops to only show shops owned by the current user (for shop owners)
+        if db_field.name == 'shops' and not request.user.is_superuser and request.user.is_staff and request.user.shops.exists():
+            kwargs['queryset'] = request.user.shops.all()
+        
+        # Filter primary_shop to only show shops owned by the current user (for shop owners)
+        if db_field.name == 'primary_shop' and not request.user.is_superuser and request.user.is_staff and request.user.shops.exists():
+            kwargs['queryset'] = request.user.shops.all()
+        
+        return super().formfield_for_manytomany(db_field, request, **kwargs)
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        # Filter primary_shop foreign key to only show shops owned by the current user
+        if db_field.name == 'primary_shop' and not request.user.is_superuser and request.user.is_staff and request.user.shops.exists():
+            kwargs['queryset'] = request.user.shops.all()
+        
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     def has_add_permission(self, request):
         # Superusers and shop owners can add users
@@ -35,8 +55,8 @@ class UserAdmin(BaseUserAdmin):
 
     def get_readonly_fields(self, request, obj=None):
         readonly_fields = ['id', 'created_at', 'updated_at', 'last_login']
-        # Non-superusers cannot modify critical admin fields
-        if not request.user.is_superuser:
+        # Only superusers have restrictions - shop owners get full access
+        if not request.user.is_superuser and not request.user.is_staff:
             readonly_fields.extend(['is_staff', 'is_superuser', 'is_active', 'user_lock'])
         return readonly_fields
 
@@ -44,8 +64,12 @@ class UserAdmin(BaseUserAdmin):
         # Superusers can change everything
         if request.user.is_superuser:
             return True
-        # Shop owners can only change users from their shops or themselves
-        if request.user.is_staff and request.user.shops.exists() and obj:
+        # Shop owners can change users from their shops or themselves
+        # For add views (obj=None), they need change permission to proceed
+        if request.user.is_staff and request.user.shops.exists():
+            if obj is None:
+                # This is for the add view - allow shop owners to proceed
+                return True
             return obj.shops.filter(id__in=request.user.shops.all()).exists() or obj.id == request.user.id
         return super().has_change_permission(request, obj)
 
@@ -57,6 +81,19 @@ class UserAdmin(BaseUserAdmin):
         if request.user.is_staff and request.user.shops.exists() and obj:
             return obj.shops.filter(id__in=request.user.shops.all()).exists() and obj.id != request.user.id
         return super().has_delete_permission(request, obj)
+
+    def save_model(self, request, obj, form, change):
+        # If shop owner is creating/updating user, restrict shops to their own shops
+        if not request.user.is_superuser and request.user.is_staff and request.user.shops.exists():
+            # Only allow assigning to shops that the current user owns
+            if hasattr(obj, 'shops'):
+                obj.shops.set(request.user.shops.all())
+            # Set primary_shop to one of the shop owner's shops
+            if hasattr(obj, 'primary_shop') and obj.primary_shop:
+                if obj.primary_shop not in request.user.shops.all():
+                    obj.primary_shop = request.user.shops.first()
+        
+        super().save_model(request, obj, form, change)
 
     fieldsets = (
         (None, {'fields': ('phone_number', 'password')}),
@@ -70,7 +107,7 @@ class UserAdmin(BaseUserAdmin):
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('phone_number', 'password1', 'password2', 'email', 'user_name', 'is_verified'),
+            'fields': ('phone_number', 'password1', 'password2', 'email', 'user_name', 'is_verified', 'role', 'shops', 'primary_shop', 'permissions', 'address', 'country', 'state', 'city', 'pincode', 'profile_image', 'is_active', 'user_lock', 'status'),
         }),
     )
 

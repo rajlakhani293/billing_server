@@ -1,4 +1,6 @@
 from django.contrib import admin
+from django.contrib.auth.hashers import make_password
+from django.contrib import messages
 from .models import Shop
 
 
@@ -49,6 +51,15 @@ class ShopAdmin(admin.ModelAdmin):
         if request.user.is_staff and request.user.shops.exists() and obj:
             return obj.id in [shop.id for shop in request.user.shops.all()] and obj.id != request.user.primary_shop.id
         return super().has_delete_permission(request, obj)
+
+    def save_model(self, request, obj, form, change):
+        # When creating a new shop, set default password for the shop owner if provided
+        if not change and obj.email and not obj.password:
+            # Set default password "admin123" for new shop owners
+            obj.password = make_password('admin123')
+            messages.success(request, f'Default password "admin123" has been set for shop owner: {obj.email}')
+        
+        super().save_model(request, obj, form, change)
 
     fieldsets = (
         ('Basic Info', {'fields': ('id','shop_code', 'shop_name', 'legal_name', 'owner')}),
