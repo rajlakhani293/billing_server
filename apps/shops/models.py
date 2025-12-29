@@ -1,10 +1,10 @@
 from django.db import models
 from apps.accounts.models import User
-from apps.core.models import TimestampedModel, UUIDModel
+from apps.core.models import TimestampedModel, IntegerModel
 from cities_light.models import Country, Region, City
 
 # Create your models here.
-class Shop(UUIDModel, TimestampedModel):
+class Shop(IntegerModel, TimestampedModel):
     shop_code = models.CharField(max_length=150, blank=False, unique=True, null=False)
     shop_name = models.CharField(max_length=150, blank=False, null=False)
     legal_name = models.CharField(max_length=150, blank=False, null=False)

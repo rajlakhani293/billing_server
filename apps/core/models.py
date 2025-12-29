@@ -1,8 +1,7 @@
-import uuid
 from django.db import models
 
-class UUIDModel(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class IntegerModel(models.Model):
+    id = models.AutoField(primary_key=True, editable=False)
 
     class Meta:
         abstract = True

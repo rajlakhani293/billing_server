@@ -121,9 +121,9 @@ class ShopResponseSchema(BaseResponseSchema):
 
 
 class RegistrationDataSchema(Schema):
-    user: UserDataSchema
-    shop: ShopDataSchema
-    tokens: TokenDataSchema
+    user: Optional[UserDataSchema] = None
+    shop: Optional[ShopDataSchema] = None
+    tokens: Optional[TokenDataSchema] = None
 
 
 class RegistrationResponseSchema(BaseResponseSchema):

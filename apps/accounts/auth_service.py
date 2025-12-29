@@ -121,13 +121,38 @@ class AuthService:
             if User.objects.filter(phone_number=verified_phone).exists():
                 return ResponseBuilder.error('User already registered with this phone number')
 
+            # Check if email already exists (only if email is provided and not empty)
+            email = data.get('email')
+            if email and email != "" and email is not None:  # Only check if email is not empty and not null
+                if User.objects.filter(email=email).exists():
+                    return ResponseBuilder.error('Email already registered with another account')
+
             # Create user and shop in transaction
             with transaction.atomic():
                 user, shop = ShopService._create_user_and_shop(data, verified_phone)
                 return ShopService._build_response(user, shop)
 
         except Exception as e:
-            return ResponseBuilder.error(f'Failed to register shop: {str(e)}')
+            # Handle specific database errors
+            error_message = str(e)
+            
+            if "Duplicate entry" in error_message and "email" in error_message:
+                return ResponseBuilder.error(
+                    'Email address is already registered. Please use a different email address.',
+                    code=400
+                )
+            elif "Duplicate entry" in error_message and "phone_number" in error_message:
+                return ResponseBuilder.error(
+                    'Phone number is already registered. Please use a different phone number.',
+                    code=400
+                )
+            elif "Duplicate entry" in error_message:
+                return ResponseBuilder.error(
+                    'Registration failed: Some information already exists in our system.',
+                    code=400
+                )
+            else:
+                return ResponseBuilder.error(f'Failed to register shop: {str(e)}', code=500)
 
     @staticmethod
     def send_login_otp(phone_number: str) -> dict:
@@ -500,18 +525,23 @@ class ShopService:
     @staticmethod
     def _create_user_and_shop(data: dict, phone_number: str) -> tuple[User, Shop]:
         """Create user and shop in a transaction"""
+        # Handle email - accept null or empty string as None
+        email = data.get("email")
+        if email == "" or email is None:
+            email = None
+        
         user = User.objects.create(
             phone_number=phone_number,
             user_name=data["shop_name"],
-            email=data.get("email"),
+            email=email,  # Will be None if email was null or empty string
             country_id=data.get("country"),
             state_id=data.get("state"),
             city_id=data.get("city"),
             address=data.get("address"),
             pincode=data.get("pincode"),
             is_verified=True,
-            is_superuser=True,
-            is_staff=True
+            is_superuser=False,  # Shop owners are NOT superusers
+            is_staff=True       # But they can access admin for their shop
         )
 
         if data.get("password"):
@@ -538,7 +568,7 @@ class ShopService:
             state_id=data["state"],
             city_id=data["city"],
             phone_number=phone_number,
-            email=data.get("email"),
+            email=email,  # Use the same processed email (None if null or empty)
             default_shop=1 if is_first_shop else 0,  # First shop becomes default
             owner=user
         )
@@ -558,47 +588,7 @@ class ShopService:
         
         return ResponseBuilder.success(
             'Shop registered successfully',
-            {
-                "user": {
-                    "id": str(user.id),
-                    "phone_number": user.phone_number,
-                    "email": user.email,
-                    "user_name": user.user_name,
-                    "is_verified": user.is_verified,
-                    "is_staff": user.is_staff,
-                    "has_password": bool(user.password),
-                    "role": getattr(user, 'role', None)
-                },
-                "shop": {
-                    "id": str(shop.id),
-                    "shop_code": shop.shop_code,
-                    "shop_name": shop.shop_name,
-                    "legal_name": shop.legal_name,
-                    "business_type_id": shop.business_type_id,
-                    "email": shop.email,
-                    "phone_number": shop.phone_number,
-                    "tax_no": shop.tax_no,
-                    "pan_no": shop.pan_no,
-                    "address": shop.address,
-                    "pincode": shop.pincode,
-                    "city": shop.city.id if shop.city else None,
-                    "state": shop.state.id if shop.state else None,
-                    "country": shop.country.id if shop.country else None,
-                    "logo_image": shop.logo_image,
-                    "website_url": shop.website_url,
-                    "default_shop": shop.default_shop,
-                    "status": shop.status,
-                    "created_at": shop.created_at
-                },
-                "tokens": {
-                    "access": str(refresh.access_token),
-                    "refresh": str(refresh),
-                    "user_id": str(user.id),
-                    "phone_number": user.phone_number,
-                    "email": user.email,
-                    "has_password": bool(user.password)
-                }
-            },
+            None,
             code=200
         )
 

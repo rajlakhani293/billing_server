@@ -11,6 +11,53 @@ class UserAdmin(BaseUserAdmin):
     ordering = ['-created_at']
     filter_horizontal = ['shops', 'groups', 'user_permissions']
 
+    def has_add_permission(self, request):
+        # Superusers and shop owners can add users
+        return request.user.is_superuser or (request.user.is_staff and request.user.shops.exists())
+
+    def has_view_permission(self, request, obj=None):
+        # Superusers and shop owners can view users
+        return request.user.is_superuser or (request.user.is_staff and request.user.shops.exists())
+
+    def has_module_permission(self, request):
+        # Superusers and shop owners can see the module
+        return request.user.is_superuser or (request.user.is_staff and request.user.shops.exists())
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        # Superusers see all users
+        if request.user.is_superuser:
+            return qs
+        # Shop owners only see users from their shops and themselves
+        elif request.user.is_staff and request.user.shops.exists():
+            return qs.filter(shops__in=request.user.shops.all()).distinct() | qs.filter(id=request.user.id).distinct()
+        return qs.none()
+
+    def get_readonly_fields(self, request, obj=None):
+        readonly_fields = ['id', 'created_at', 'updated_at', 'last_login']
+        # Non-superusers cannot modify critical admin fields
+        if not request.user.is_superuser:
+            readonly_fields.extend(['is_staff', 'is_superuser', 'is_active', 'user_lock'])
+        return readonly_fields
+
+    def has_change_permission(self, request, obj=None):
+        # Superusers can change everything
+        if request.user.is_superuser:
+            return True
+        # Shop owners can only change users from their shops or themselves
+        if request.user.is_staff and request.user.shops.exists() and obj:
+            return obj.shops.filter(id__in=request.user.shops.all()).exists() or obj.id == request.user.id
+        return super().has_change_permission(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        # Superusers can delete everything
+        if request.user.is_superuser:
+            return True
+        # Shop owners can only delete users from their shops (not themselves)
+        if request.user.is_staff and request.user.shops.exists() and obj:
+            return obj.shops.filter(id__in=request.user.shops.all()).exists() and obj.id != request.user.id
+        return super().has_delete_permission(request, obj)
+
     fieldsets = (
         (None, {'fields': ('phone_number', 'password')}),
         ('Personal Info', {'fields': ('id','email', 'user_name')}),
@@ -54,6 +101,46 @@ class RolePermissionAdmin(admin.ModelAdmin):
     ordering = ['-created_at']
     readonly_fields = ['id', 'created_at', 'updated_at']
 
+    def has_add_permission(self, request):
+        # Superusers and shop owners can add roles
+        return request.user.is_superuser or (request.user.is_staff and request.user.shops.exists())
+
+    def has_view_permission(self, request, obj=None):
+        # Superusers and shop owners can view roles
+        return request.user.is_superuser or (request.user.is_staff and request.user.shops.exists())
+
+    def has_module_permission(self, request):
+        # Superusers and shop owners can see the module
+        return request.user.is_superuser or (request.user.is_staff and request.user.shops.exists())
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        # Superusers see all roles
+        if request.user.is_superuser:
+            return qs
+        # Shop owners only see roles from their shops
+        elif request.user.is_staff and request.user.shops.exists():
+            return qs.filter(shop__in=request.user.shops.all())
+        return qs.none()
+
+    def has_change_permission(self, request, obj=None):
+        # Superusers can change everything
+        if request.user.is_superuser:
+            return True
+        # Shop owners can only edit roles from their shops
+        if request.user.is_staff and request.user.shops.exists() and obj:
+            return obj.shop and obj.shop.id in [shop.id for shop in request.user.shops.all()]
+        return super().has_change_permission(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        # Superusers can delete everything
+        if request.user.is_superuser:
+            return True
+        # Shop owners can only delete roles from their shops
+        if request.user.is_staff and request.user.shops.exists() and obj:
+            return obj.shop and obj.shop.id in [shop.id for shop in request.user.shops.all()]
+        return super().has_delete_permission(request, obj)
+
     fieldsets = (
         ('Role Info', {'fields': ('role_name', 'shop')}),
         ('Permissions', {'fields': ('permissions',)}),
@@ -70,6 +157,29 @@ class MenuMasterAdmin(admin.ModelAdmin):
     ordering = ['priority', 'created_at']
     readonly_fields = ['id', 'created_at', 'updated_at']
     
+    def has_view_permission(self, request, obj=None):
+        # Only superusers can view menus
+        return request.user.is_superuser
+
+    def has_module_permission(self, request):
+        # Only superusers can see the menu module
+        return request.user.is_superuser
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        # Only superusers see all menus
+        if request.user.is_superuser:
+            return qs
+        return qs.none()
+
+    def has_change_permission(self, request, obj=None):
+        # Only superusers can change menus
+        return request.user.is_superuser
+
+    def has_delete_permission(self, request, obj=None):
+        # Only superusers can delete menus
+        return request.user.is_superuser
+    
     fieldsets = (
         ('Menu Info', {'fields': ('menu_name', 'cust_menu_name', 'priority')}),
         ('Menu Details', {'fields': ('menu_icon_name', 'menu_url')}),
@@ -85,6 +195,29 @@ class MenuModuleMasterAdmin(admin.ModelAdmin):
     search_fields = ['module_name', 'cust_module_name', 'module_icon_name']
     ordering = ['priority', 'created_at']
     readonly_fields = ['id', 'created_at', 'updated_at']
+    
+    def has_view_permission(self, request, obj=None):
+        # Only superusers can view modules
+        return request.user.is_superuser
+
+    def has_module_permission(self, request):
+        # Only superusers can see the module module
+        return request.user.is_superuser
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        # Only superusers see all modules
+        if request.user.is_superuser:
+            return qs
+        return qs.none()
+
+    def has_change_permission(self, request, obj=None):
+        # Only superusers can change modules
+        return request.user.is_superuser
+
+    def has_delete_permission(self, request, obj=None):
+        # Only superusers can delete modules
+        return request.user.is_superuser
     
     fieldsets = (
         ('Module Info', {'fields': ('menu', 'module_name', 'cust_module_name', 'priority')}),

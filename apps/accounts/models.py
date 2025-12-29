@@ -1,10 +1,11 @@
 from django.db import models
-from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
-from apps.core.models import TimestampedModel, UUIDModel
-from datetime import timedelta
+from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.utils import timezone
-from cities_light.models import Country, Region, City
+from django.core.exceptions import ValidationError
+from django.contrib.auth.hashers import make_password
 
+from apps.core.models import IntegerModel, TimestampedModel
+from cities_light.models import Country, Region, City
 
 
 class UserManager(BaseUserManager):
@@ -37,7 +38,7 @@ class UserManager(BaseUserManager):
         return user
 
 
-class User(AbstractBaseUser, PermissionsMixin, UUIDModel, TimestampedModel):
+class User(AbstractBaseUser, PermissionsMixin, IntegerModel, TimestampedModel):
     role = models.ForeignKey('RolePermission', on_delete=models.PROTECT, related_name='users', null=True, blank=True)
     user_name = models.CharField(max_length=150, blank=True, null=True)
     phone_number = models.CharField(max_length=15, blank=True, null=True, unique=True)
@@ -77,7 +78,7 @@ class User(AbstractBaseUser, PermissionsMixin, UUIDModel, TimestampedModel):
         return self.user_name or str(self.phone_number)
 
 
-class OTP(UUIDModel, TimestampedModel):
+class OTP(IntegerModel, TimestampedModel):
     """OTP model for phone verification with rate limiting"""
 
     phone_number = models.CharField(max_length=15, blank=True, null=True)
@@ -137,7 +138,7 @@ class OTP(UUIDModel, TimestampedModel):
         return self.otp_code == otp_code
 
         
-class RolePermission(UUIDModel, TimestampedModel):
+class RolePermission(IntegerModel, TimestampedModel):
     role_name = models.CharField(max_length=150, blank=False, null=False)
     permissions = models.JSONField(default=list, blank=True, help_text='List of permissions user has access to')
     shop = models.ForeignKey('shops.Shop', on_delete=models.CASCADE, related_name='roles', null=True, blank=True)
@@ -153,7 +154,7 @@ class RolePermission(UUIDModel, TimestampedModel):
         return self.role_name
 
 
-class MenuMaster(UUIDModel, TimestampedModel):
+class MenuMaster(IntegerModel, TimestampedModel):
     menu_name = models.CharField(max_length=100, null=False)
     cust_menu_name = models.CharField(
         max_length=100, 
@@ -193,7 +194,7 @@ class MenuMaster(UUIDModel, TimestampedModel):
         return self.menu_name
 
 
-class MenuModuleMaster(UUIDModel, TimestampedModel):
+class MenuModuleMaster(IntegerModel, TimestampedModel):
     menu = models.ForeignKey(
         MenuMaster, 
         on_delete=models.CASCADE, 
