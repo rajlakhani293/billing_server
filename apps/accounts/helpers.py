@@ -1,10 +1,12 @@
-from typing import Tuple, Any, Dict, Optional
+from typing import Tuple, Any, Dict
 import re
 from phonenumbers import parse as parse_phone_number, is_valid_number
 from datetime import timedelta
 from django.utils import timezone
 import pyotp
-from .models import OTP, User
+from .models import OTP
+from ninja.errors import ValidationError
+from django.http import JsonResponse
 
 
 def check_recent_verification(phone_number: str) -> dict:
@@ -32,30 +34,68 @@ def check_recent_verification(phone_number: str) -> dict:
     except Exception as e:
         return {'was_verified_recently': False}
 
+def validation_error_handler(request, exc: ValidationError):
+    first_error = exc.errors[0]
+    field = first_error["loc"][-1]
+    message = f"{field} required"
+
+    return JsonResponse({
+        "success": False,
+        "code": 400,
+        "message": message,
+        "data": None
+    }, status=400)
+
+def validate_unique_fields(payload: dict, validation_config: dict, exclude_id: str = None, exclude_status: int = 2):
+   
+    model_class = validation_config.get('model')
+    unique_fields = validation_config.get('fields', [])
+    
+    if not model_class or not unique_fields:
+        return True, {}
+    
+    errors = {}
+    
+    for field_name in unique_fields:
+        if field_name in payload and payload[field_name] is not None:
+            filter_kwargs = {field_name: payload[field_name]}
+            queryset = model_class.objects.filter(**filter_kwargs)
+            
+            if exclude_status is not None:
+                queryset = queryset.exclude(status=exclude_status)
+            
+            if exclude_id:
+                queryset = queryset.exclude(id=exclude_id)
+            
+            if queryset.exists():
+                field_display_name = field_name.replace('_', ' ').title()
+                errors[field_name] = f'{field_display_name} already exists'
+    
+    is_valid = len(errors) == 0
+    return is_valid, errors
 
 class ResponseBuilder:
     """Standardized response builder for API responses"""
     
     @staticmethod
-    def success(message: str, data=None, code: int = 200) -> dict:
+    def success(message: str, data=None) -> dict:
         """Return success response"""
         return {
             'success': True,
-            'code': code,
+            'code': 200,
             'message': message,
             'data': data
         }
     
     @staticmethod
-    def error(message: str, data=None, code: int = 400) -> dict:
+    def error(message: str, data=None) -> dict:
         """Return error response"""
         return {
             'success': False,
-            'code': code,
+            'code': 400,
             'message': message,
             'data': data
         }
-
 
 def handle_response(result: Dict[str, Any], success_key: str = 'success') -> Tuple[int, Dict[str, Any]]:
     """
@@ -122,124 +162,6 @@ def handle_not_found_response(result: Dict[str, Any], not_found_message: str) ->
         return 404, response
     else:
         return handle_response(result)
-
-
-def validate_required_fields(data: Dict[str, Any], required_fields: list) -> Tuple[bool, Optional[str]]:
-    """
-    Helper function to validate required fields
-    
-    Args:
-        data: Dictionary to validate
-        required_fields: List of required field names
-    
-    Returns:
-        Tuple of (is_valid, missing_field)
-    """
-    for field in required_fields:
-        if field not in data or data[field] is None:
-            return False, field
-    return True, None
-
-
-def filter_update_data(payload: Dict[str, Any], allowed_fields: list) -> Dict[str, Any]:
-    """
-    Helper function to filter payload data for updates
-    
-    Args:
-        payload: Input data dictionary
-        allowed_fields: List of allowed field names
-    
-    Returns:
-        Filtered dictionary with only allowed fields
-    """
-    return {
-        key: value for key, value in payload.items() 
-        if key in allowed_fields and value is not None
-    }
-
-
-def format_error_response(message: str, errors: Optional[Dict[str, Any]] = None, status_code: int = 400) -> Dict[str, Any]:
-    """
-    Helper function to format error responses
-    
-    Args:
-        message: Error message
-        errors: Optional error details dictionary
-        status_code: HTTP status code
-    
-    Returns:
-        Formatted error response
-    """
-    response = {
-        'success': False,
-        'code': status_code,
-        'message': message,
-        'data': {
-            'field_errors': errors
-        }
-    }
-    # Remove None values from data
-    response['data'] = {k: v for k, v in response['data'].items() if v is not None}
-    if not response['data']:
-        response['data'] = None
-    return response
-
-
-def format_success_response(message: str, data: Optional[Dict[str, Any]] = None, status_code: int = 200) -> Dict[str, Any]:
-    """
-    Helper function to format success responses
-    
-    Args:
-        message: Success message
-        data: Optional data to include
-        status_code: HTTP status code
-    
-    Returns:
-        Formatted success response
-    """
-    response = {
-        'success': True,
-        'code': status_code,
-        'message': message,
-        'data': data or {}
-    }
-    return response
-
-
-def get_pagination_params(request) -> Dict[str, int]:
-    """
-    Helper function to extract pagination parameters
-    
-    Args:
-        request: Django request object
-    
-    Returns:
-        Dictionary with pagination parameters
-    """
-    page = int(request.GET.get('page', 1))
-    limit = int(request.GET.get('limit', 10))
-    offset = (page - 1) * limit
-    
-    return {
-        'page': page,
-        'limit': limit,
-        'offset': offset
-    }
-
-
-def paginate_queryset(queryset, offset: int, limit: int):
-    """
-    Helper function to paginate queryset
-    
-    Args:
-        queryset: Django queryset
-        offset: Number of items to skip
-        limit: Number of items to return
-    
-    Returns:
-        Paginated queryset
-    """
-    return queryset[offset:offset + limit]
 
 
 def create_pagination_response(items: list, page: int, limit: int, total_count: int) -> Dict[str, Any]:

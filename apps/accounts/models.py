@@ -166,10 +166,11 @@ class RolePermission(IntegerModel, TimestampedModel):
 
 
 class MenuMaster(IntegerModel, TimestampedModel):
-    menu_name = models.CharField(max_length=100, null=False)
+    menu_name = models.CharField(max_length=100, null=False, unique=True)
     cust_menu_name = models.CharField(
         max_length=100, 
         null=False, 
+        unique=True,
         help_text="Customized Menu Name For Parties"
     )
     priority = models.IntegerField(default=0)
@@ -212,10 +213,11 @@ class MenuModuleMaster(IntegerModel, TimestampedModel):
         related_name='modules',
         null=True
     )
-    module_name = models.CharField(max_length=100, null=False)
+    module_name = models.CharField(max_length=100, null=False, unique=True)
     cust_module_name = models.CharField(
         max_length=100,
         null=False,
+        unique=True,
         help_text="Customized Module Name For Parties"
     )
     module_url = models.TextField(null=True, blank=True)

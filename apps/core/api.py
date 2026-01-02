@@ -7,7 +7,7 @@ from .schema import (
     CityListResponseSchema,
     ErrorResponseSchema
 )
-from .helpers import format_error_response
+from apps.accounts.helpers import ResponseBuilder
 
 location_router = Router(tags=['Location'])
 
@@ -24,14 +24,9 @@ def get_countries(request):
             }
             for country in countries
         ]
-        return 200, {
-            'success': True,
-            'code': 200,
-            'message': 'Countries retrieved successfully',
-            'data': countries_data
-        }
+        return 200, ResponseBuilder.success('Countries retrieved successfully', countries_data)
     except Exception as e:
-        return 400, format_error_response(str(e))
+        return 400, ResponseBuilder.error(f'Failed to get countries: {str(e)}')
 
 
 @location_router.get('/countries/{country_id}/regions', response={200: RegionListResponseSchema, 400: ErrorResponseSchema})
@@ -46,14 +41,9 @@ def get_regions(request, country_id: str):
             }
             for region in regions
         ]
-        return 200, {
-            'success': True,
-            'code': 200,
-            'message': 'Regions retrieved successfully',
-            'data': regions_data
-        }
+        return 200, ResponseBuilder.success('Regions retrieved successfully', regions_data)
     except Exception as e:
-        return 400, format_error_response(str(e))
+        return 400, ResponseBuilder.error(f'Failed to get regions: {str(e)}')
 
 
 @location_router.get('/regions/{region_id}/cities', response={200: CityListResponseSchema, 400: ErrorResponseSchema})
@@ -68,11 +58,6 @@ def get_cities(request, region_id: str):
             }
             for city in cities
         ]
-        return 200, {
-            'success': True,
-            'code': 200,
-            'message': 'Cities retrieved successfully',
-            'data': cities_data
-        }
+        return 200, ResponseBuilder.success('Cities retrieved successfully', cities_data)
     except Exception as e:
-        return 400, format_error_response(str(e))
+        return 400, ResponseBuilder.error(f'Failed to get cities: {str(e)}')

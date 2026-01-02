@@ -58,7 +58,7 @@ class AuthService:
             ).order_by('-created_at').first()
 
             if not otp_instance:
-                return ResponseBuilder.error('OTP not found', code=404)
+                return ResponseBuilder.error('OTP not found')
 
             # Verify OTP
             if otp_instance.verify(payload['otp_code']):               
@@ -107,14 +107,13 @@ class AuthService:
                 data['registration_token']
             )
             if not token_valid:
-                return ResponseBuilder.error(token_message, code=401)
+                return ResponseBuilder.error(token_message)
 
             # Check if phone number was verified within last 10 minutes
             verification_check = check_recent_verification(verified_phone)
             if not verification_check['was_verified_recently']:
                 return ResponseBuilder.error(
-                    'Registration session expired. Please verify your phone number again to continue.',
-                    code=429
+                    'Registration session expired. Please verify your phone number again to continue.'  
                 )
 
             # Check if user already exists
@@ -138,21 +137,18 @@ class AuthService:
             
             if "Duplicate entry" in error_message and "email" in error_message:
                 return ResponseBuilder.error(
-                    'Email address is already registered. Please use a different email address.',
-                    code=400
+                    'Email address is already registered. Please use a different email address.'
                 )
             elif "Duplicate entry" in error_message and "phone_number" in error_message:
                 return ResponseBuilder.error(
-                    'Phone number is already registered. Please use a different phone number.',
-                    code=400
+                    'Phone number is already registered. Please use a different phone number.'
                 )
             elif "Duplicate entry" in error_message:
                 return ResponseBuilder.error(
-                    'Registration failed: Some information already exists in our system.',
-                    code=400
+                    'Registration failed: Some information already exists in our system.'
                 )
             else:
-                return ResponseBuilder.error(f'Failed to register shop: {str(e)}', code=500)
+                return ResponseBuilder.error(f'Failed to register shop: {str(e)}')
 
     @staticmethod
     def send_login_otp(phone_number: str) -> dict:
@@ -297,77 +293,22 @@ class AuthService:
         """Get comprehensive user session data"""
         try:
             user_id = payload.get('user_id')
+            shop_id = payload.get('shop_id')
+
+            if not user_id or not shop_id:
+                return ResponseBuilder.error("user_id and shop_id are required")
             
-            # Get user by user_id
+            # Fetch user
             user = User.objects.get(id=user_id)
+
+            # Validate that the user has access to the specified shop
+            if not user.shops.filter(id=shop_id).exists():
+                return ResponseBuilder.error("User does not have access to this shop")
             
             # Get user's shops
             shops = user.shops.all()
             primary_shop = user.primary_shop
-            sidebar_menu_list = []
-            all_menu_modules = []
-            
-            if primary_shop:
-                # Get menus for this shop and user
-                menus = MenuMaster.objects.filter(
-                    shop=primary_shop,
-                    user=user,
-                    status=0
-                ).order_by('priority')
-                
-                modules = MenuModuleMaster.objects.filter(
-                    shop=primary_shop,
-                    user=user,
-                    status=0,
-                    module_visibility=1
-                ).order_by('priority')
-                
-                # Build sidebar menu with modules
-                for menu in menus:
-                    menu_modules = modules.filter(menu=menu)
-                    sidebar_menu_list.append({
-                        'id': str(menu.id),
-                        'menu_name': menu.menu_name,
-                        'cust_menu_name': menu.cust_menu_name,
-                        'menu_icon_name': menu.menu_icon_name,
-                        'menu_url': menu.menu_url,
-                        'priority': menu.priority,
-                        'modules': [
-                            {
-                                'id': str(module.id),
-                                'module_name': module.module_name,
-                                'cust_module_name': module.cust_module_name,
-                                'module_icon_name': module.module_icon_name,
-                                'module_url': module.module_url,
-                                'priority': module.priority,
-                            } for module in menu_modules
-                        ]
-                    })
-                
-                # Build flat list of all menus and modules
-                all_menu_modules = [
-                    {
-                        'menu_id': str(menu.id),
-                        'module_id': None,
-                        'name': menu.cust_menu_name or menu.menu_name,
-                        'icon': menu.menu_icon_name,
-                        'url': menu.menu_url,
-                        'priority': menu.priority,
-                    } for menu in menus
-                ] + [
-                    {
-                        'menu_id': str(module.menu.id),
-                        'module_id': str(module.id),
-                        'name': module.cust_module_name or module.module_name,
-                        'icon': module.module_icon_name,
-                        'url': module.module_url,
-                        'priority': module.priority,
-                    } for module in modules
-                ]
-                
-                # Sort by menu_id then priority
-                all_menu_modules.sort(key=lambda x: (x['menu_id'], x['priority'] if x['module_id'] is not None else 0))
-            
+                 
             # Build shop list with enriched data
             shop_list = []
             for shop in shops:
@@ -397,7 +338,6 @@ class AuthService:
                     'logo_image_url': str(shop.logo_image) if shop.logo_image else None,
                     'default_shop': shop.default_shop,
                     'status': shop.status,
-                    'created_at': shop.created_at.isoformat() if shop.created_at else None,
                 }
                 shop_list.append(shop_data)
             
@@ -408,7 +348,7 @@ class AuthService:
             
             # Enriched user data
             enriched_user = {
-                'id': str(user.id),
+                'id': user.id,
                 'phone_number': user.phone_number,
                 'email': user.email,
                 'user_name': user.user_name,
@@ -425,9 +365,7 @@ class AuthService:
                 {
                     'shop_list': shop_list,
                     'shop': current_shop,
-                    'user': enriched_user,
-                    'sidebarMenu': sidebar_menu_list,
-                    'modules': all_menu_modules,
+                    'user': enriched_user
                 }
             )
         except Exception as e:
@@ -589,7 +527,6 @@ class ShopService:
         return ResponseBuilder.success(
             'Shop registered successfully',
             None,
-            code=200
         )
 
 
@@ -712,7 +649,7 @@ class OTPLimitService:
             otp_records = OTP.objects.filter(phone_number=normalized_phone)
             
             if not otp_records.exists():
-                return ResponseBuilder.error('No OTP records found for this phone number', code=404)
+                return ResponseBuilder.error('No OTP records found for this phone number')
             
             # Delete all records instead of just updating them
             deleted_count = otp_records.count()

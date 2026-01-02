@@ -36,10 +36,14 @@ class AuthBearer(HttpBearer):
                 return None
             
             User = get_user_model()
-            user = User.objects.get(id=user_id)
+            # Convert string user_id to integer since User model uses AutoField
+            try:
+                user_id_int = int(user_id)
+                user = User.objects.get(id=user_id_int)
+            except (ValueError, User.DoesNotExist):
+                return None
+            
             return user
             
         except jwt.PyJWTError:
-            return None
-        except User.DoesNotExist:
             return None

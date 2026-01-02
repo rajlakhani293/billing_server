@@ -3,8 +3,10 @@ from django.urls import path
 from django.conf import settings
 from django.conf.urls.static import static
 from ninja import NinjaAPI
+from ninja.errors import ValidationError
 from apps.accounts.api import auth_router, menu_master_router, menu_module_router
 from apps.core.api import location_router
+from apps.accounts.helpers import validation_error_handler
 
 # Initialize Ninja API
 api = NinjaAPI(
@@ -12,6 +14,8 @@ api = NinjaAPI(
     version='1.0.0',
     description='API for retail billing software'
 )
+
+api.add_exception_handler(ValidationError, validation_error_handler)
 
 # Add routers
 api.add_router('/auth', auth_router)

@@ -23,7 +23,6 @@ class ShopRegistrationSchema(Schema):
     password: Optional[str] = None
 
     # Shop Info (matching Shop model)
-    shop_code: Optional[str] = None
     shop_name: str
     legal_name: Optional[str] = None
     business_type_id: Optional[int] = 0
@@ -32,12 +31,11 @@ class ShopRegistrationSchema(Schema):
     pan_no: Optional[str] = None
     address: Optional[str] = None
     pincode: Optional[str] = None
-    country: Optional[int] = None 
-    state: Optional[int] = None 
-    city: Optional[int] = None 
+    country: int
+    state: int
+    city: int
     logo_image: Optional[str] = None
     website_url: Optional[str] = None
-    default_shop: Optional[int] = 0
 
 
 class LoginSchema(Schema):
@@ -49,6 +47,10 @@ class LoginSchema(Schema):
 
 class LogoutSchema(Schema):
     refresh: str
+
+class SessionDataRequestSchema(Schema):
+    user_id: int
+    shop_id: int
 
 
 # Response Schemas
@@ -69,7 +71,7 @@ class OTPResponseSchema(BaseResponseSchema):
 class TokenDataSchema(Schema):
     access: str
     refresh: str
-    user_id: str
+    user_id: int
     phone_number: str
     email: Optional[str] = None
     has_password: bool
@@ -80,7 +82,7 @@ class TokenResponseSchema(BaseResponseSchema):
 
 
 class UserDataSchema(Schema):
-    id: str
+    id: int
     phone_number: str
     email: Optional[str] = None
     user_name: Optional[str] = None
@@ -95,7 +97,7 @@ class UserResponseSchema(BaseResponseSchema):
 
 
 class ShopDataSchema(Schema):
-    id: str
+    id: int
     shop_code: Optional[str] = None
     shop_name: str
     legal_name: Optional[str] = None
@@ -144,12 +146,8 @@ class SuccessResponseSchema(BaseResponseSchema):
     data: Optional[dict] = None
 
 
-class SessionDataRequestSchema(Schema):
-    user_id: str
-
-
 class SessionDataSchema(BaseResponseSchema):
-    data: dict  # Will contain user, shops, primary_shop, role, permissions
+    data: dict
 
 
 # Menu Master Schemas
@@ -163,24 +161,20 @@ class MenuMasterCreateSchema(Schema):
 
 
 class MenuMasterUpdateSchema(Schema):
-    menu_name: Optional[str] = None
-    cust_menu_name: Optional[str] = None
+    menu_name: str
+    cust_menu_name: str
     priority: Optional[int] = None
     menu_icon_name: Optional[str] = None
-    menu_url: Optional[str] = None
-    status: Optional[int] = None
-
+    menu_url: str
 
 class MenuMasterDataSchema(Schema):
-    id: str
+    id: int
     menu_name: str
     cust_menu_name: str
     priority: int
     menu_icon_name: Optional[str] = None
     menu_url: Optional[str] = None
     status: int
-    created_at: datetime
-    updated_at: datetime
 
 
 class MenuMasterResponseSchema(BaseResponseSchema):
@@ -188,19 +182,17 @@ class MenuMasterResponseSchema(BaseResponseSchema):
 
 
 class MenuModuleMasterDataSchema(Schema):
-    id: str
+    id: int
     menu: Optional[MenuMasterDataSchema] = None
     module_name: str
     cust_module_name: str
-    module_url: Optional[str] = None
+    module_url: str
     module_description: Optional[str] = None
     module_permission_type_ids: str
     priority: int
     module_icon_name: Optional[str] = None
     module_visibility: int
     status: int
-    created_at: datetime
-    updated_at: datetime
 
 
 class MenuModuleMasterResponseSchema(BaseResponseSchema):
@@ -212,43 +204,28 @@ class MenuModuleMasterCreateSchema(Schema):
     menu: str
     module_name: str
     cust_module_name: str
-    module_url: Optional[str] = None
-    module_description: Optional[str] = None
-    module_permission_type_ids: str
-    priority: int = 0
-    module_icon_name: Optional[str] = None
-    module_visibility: int = 1
-    status: int = 0
-
-
-class MenuModuleMasterUpdateSchema(Schema):
-    menu: Optional[str] = None
-    module_name: Optional[str] = None
-    cust_module_name: Optional[str] = None
-    module_url: Optional[str] = None
-    module_description: Optional[str] = None
-    module_permission_type_ids: Optional[str] = None
-    priority: Optional[int] = None
-    module_icon_name: Optional[str] = None
-    module_visibility: Optional[int] = None
-    status: Optional[int] = None
-
-
-class MenuModuleMasterResponseSchema(Schema):
-    id: str
-    menu: Optional[MenuMasterResponseSchema] = None
-    module_name: str
-    cust_module_name: str
-    module_url: Optional[str] = None
+    module_url: str
     module_description: Optional[str] = None
     module_permission_type_ids: str
     priority: int
     module_icon_name: Optional[str] = None
-    module_visibility: int
-    status: int
-    created_at: datetime
-    updated_at: datetime
-    code: int = 200
+    module_visibility: int = 1
+
+
+class MenuModuleMasterUpdateSchema(Schema):
+    menu: str
+    module_name: str
+    cust_module_name: str
+    module_url: str
+    module_description: Optional[str] = None
+    module_permission_type_ids: str
+    priority: Optional[int] = None
+    module_icon_name: Optional[str] = None
+    module_visibility: Optional[int] = None
+
+
+class MenuModuleMasterResponseSchema(BaseResponseSchema):
+    data: dict
 
 
 # OTP Limit Management Schemas
