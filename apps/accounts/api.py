@@ -108,12 +108,22 @@ def session_data(request, payload: SessionDataRequestSchema):
 # Get all users with OTP limit reached (blocked users)
 @auth_router.get('/blocked-users', response={200: BlockedUsersResponseSchema, 400: ErrorResponseSchema})
 def get_blocked_users(request):
-    return OTPLimitService.get_blocked_users()
+    result = OTPLimitService.get_blocked_users()
+    
+    if result['success']:
+        return 200, result
+    else:
+        return 400, result
 
 # Reset OTP timer for a specific user
 @auth_router.post('/reset-otp-limit', response={200: ResetOTPResponseSchema, 400: ErrorResponseSchema, 404: ErrorResponseSchema})
 def reset_otp_limit(request, payload: ResetOTPSchema):
-    return OTPLimitService.reset_otp_limit(payload.phone_number)
+    result = OTPLimitService.reset_otp_limit(payload.phone_number)
+    
+    if result['success']:
+        return 200, result
+    else:
+        return 400, result
 
 
 # ================================================================= ================================================================= =================================================================
@@ -125,27 +135,53 @@ menu_master_router = Router(tags=['Menu Master'])
 # Create Menu Master
 @menu_master_router.post('/', response={201: MenuMasterResponseSchema, 400: ErrorResponseSchema})
 def create(request, payload: MenuMasterCreateSchema):
-    return MenuService.create(payload.dict())
+    result = MenuService.create(payload.dict())
+    
+    if result['success']:
+        return 201, result
+    else:
+        return 400, result
+    
 
 # Get all Menu Masters
 @menu_master_router.get('/get-transactions', response={200: dict, 400: ErrorResponseSchema})
 def getAll(request):
-    return MenuService.getAll()
+    result = MenuService.getAll()
+    
+    if result['success']:
+        return 200, result
+    else:
+        return 400, result
 
 # Get Menu Master by ID
 @menu_master_router.get('/{menu_id}', response={200: MenuMasterResponseSchema, 400: ErrorResponseSchema, 404: ErrorResponseSchema})
 def getById(request, menu_id: str):
-    return MenuService.getById(menu_id)
+    result = MenuService.getById(menu_id)
+    
+    if result['success']:
+        return 200, result
+    else:
+        return 404, result
 
 # Update Menu Master
 @menu_master_router.put('/{menu_id}', response={200: MenuMasterResponseSchema, 400: ErrorResponseSchema, 404: ErrorResponseSchema})
 def update(request, menu_id: str, payload: MenuMasterUpdateSchema):
-    return MenuService.update(menu_id, payload.dict())
+    result = MenuService.update(menu_id, payload.dict())
+    
+    if result['success']:
+        return 200, result
+    else:
+        return 400, result
 
 # Delete Menu Master
 @menu_master_router.delete('/{menu_id}', response={200: SuccessResponseSchema, 400: ErrorResponseSchema, 404: ErrorResponseSchema})
 def delete(request, menu_id: str):
-    return MenuService.delete(menu_id)
+    result = MenuService.delete(menu_id)
+    
+    if result['success']:
+        return 200, result
+    else:
+        return 400, result
 
 
 # ================================================================= ================================================================= =================================================================
@@ -157,24 +193,49 @@ menu_module_router = Router(tags=['Menu Module Master'])
 # Get all Menu Module Masters
 @menu_module_router.get('/get-transactions', response={200: dict, 400: ErrorResponseSchema})
 def getAll(request):
-    return MenuModuleService.getAll()
+    result = MenuModuleService.getAll()
+    
+    if result['success']:
+        return 200, result
+    else:
+        return 400, result
 
 # Get Menu Module Master by ID
 @menu_module_router.get('/{module_id}', response={200: MenuModuleMasterResponseSchema, 400: ErrorResponseSchema, 404: ErrorResponseSchema})
 def getById(request, module_id: str):
-    return MenuModuleService.getById(module_id)
+    result = MenuModuleService.getById(module_id)
+    
+    if result['success']:
+        return 200, result
+    else:
+        return 404, result
 
 # Create Menu Module Master
 @menu_module_router.post('/', response={201: MenuModuleMasterResponseSchema, 400: ErrorResponseSchema})
 def create(request, payload: MenuModuleMasterCreateSchema):
-    return MenuModuleService.create(payload.dict())
+    result = MenuModuleService.create(payload.dict())
+    
+    if result['success']:
+        return 201, result
+    else:
+        return 400, result
 
 # Update Menu Module Master
 @menu_module_router.put('/{module_id}', response={200: MenuModuleMasterResponseSchema, 400: ErrorResponseSchema, 404: ErrorResponseSchema})
 def update(request, module_id: str, payload: MenuModuleMasterUpdateSchema):
-    return MenuModuleService.update(module_id, payload.dict())
+    result = MenuModuleService.update(module_id, payload.dict())
+    
+    if result['success']:
+        return 200, result
+    else:
+        return 400, result
 
 # Delete Menu Module Master
 @menu_module_router.delete('/{module_id}', response={200: SuccessResponseSchema, 400: ErrorResponseSchema, 404: ErrorResponseSchema})
 def delete(request, module_id: str):
-    return MenuModuleService.delete(module_id)
+    result = MenuModuleService.delete(module_id)
+    
+    if result['success']:
+        return 200, result
+    else:
+        return 400, result
