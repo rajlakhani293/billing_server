@@ -135,6 +135,12 @@ def delete(request, menu_id: str):
     result = MenuService.delete(menu_id)
     return handle_not_found_response(result, "Menu not found")
 
+# Get Menus with Modules
+@menu_master_router.get('/with-modules', response={200: dict, 400: ErrorResponseSchema})
+def get_menus_with_modules(request):
+    result = MenuService.get_menus_with_modules()
+    return handle_response(result)
+
 
 # ================================================================= ================================================================= =================================================================
 # Menu Module Master API

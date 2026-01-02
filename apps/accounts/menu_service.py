@@ -156,6 +156,42 @@ class MenuService:
         except Exception as e:
             return ResponseBuilder.error(f'Failed to delete menu: {str(e)}')
 
+    @staticmethod
+    def get_menus_with_modules():
+        """Get menus with their modules in sequence (status 0 only)"""
+        try:
+            menus = MenuMaster.objects.filter(status=0).order_by('priority', 'created_at')
+            
+            menu_data = []
+            for menu in menus:
+                modules = MenuModuleMaster.objects.filter(
+                    menu=menu, 
+                    status=0
+                ).order_by('priority', 'created_at')
+                
+                menu_dict = {
+                    'menu_name': menu.menu_name,
+                    'priority': menu.priority,
+                    'menu_icon_name': menu.menu_icon_name,
+                    'menu_url': menu.menu_url,
+                    'modules': [
+                        {
+                            'module_name': module.module_name,
+                            'module_url': module.module_url,
+                            'priority': module.priority,
+                            'module_icon_name': module.module_icon_name
+                        } for module in modules
+                    ]
+                }
+                menu_data.append(menu_dict)
+            
+            return ResponseBuilder.success(
+                'Menus with modules retrieved successfully',
+                menu_data
+            )
+        except Exception as e:
+            return ResponseBuilder.error(f'Failed to get menus with modules: {str(e)}')
+
 
 class MenuModuleService:
     """Helper service class for menu module operations"""

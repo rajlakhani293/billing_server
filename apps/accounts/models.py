@@ -180,22 +180,6 @@ class MenuMaster(IntegerModel, TimestampedModel):
         default=0,
         help_text="0: Active, 1: Inactive, 2: Deleted"
     )
-    # Foreign keys for session data
-    user = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name='user_menus',
-        null=True,
-        blank=True
-    )
-    shop = models.ForeignKey(
-        'shops.Shop',
-        on_delete=models.CASCADE,
-        related_name='shop_menus',
-        null=True,
-        blank=True
-    )
-
     class Meta:
         db_table = 'menu_master'
         verbose_name = 'Menu Master'
@@ -233,22 +217,6 @@ class MenuModuleMaster(IntegerModel, TimestampedModel):
         default=0,
         help_text="0: Active, 1: Inactive, 2: Deleted"
     )
-    # Foreign keys for session data
-    user = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name='user_modules',
-        null=True,
-        blank=True
-    )
-    shop = models.ForeignKey(
-        'shops.Shop',
-        on_delete=models.CASCADE,
-        related_name='shop_modules',
-        null=True,
-        blank=True
-    )
-
     class Meta:
         db_table = 'menu_module_master'
         verbose_name = 'Menu Module Master'
