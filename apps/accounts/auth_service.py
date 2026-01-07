@@ -5,7 +5,8 @@ from datetime import timedelta
 from apps.accounts.helpers import check_recent_verification, normalize_phone_number, ResponseBuilder, generate_otp
 from apps.accounts.schema import ShopRegistrationSchema
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import MenuMaster, MenuModuleMaster, User, OTP
+from .models import User, OTP
+from .menu_service import MenuService
 from apps.shops.models import Shop
 import re
 import random
@@ -16,6 +17,47 @@ from django.conf import settings
 
 
 class AuthService:
+
+    @staticmethod
+    def _build_user_data(user: User) -> dict:
+        """Build complete user data object for login response"""
+        return {
+            'id': user.id,
+            'role_id': user.role.id if user.role else None,
+            'user_name': user.user_name,
+            'phone_number': user.phone_number,
+            'email': user.email,
+            'address': user.address,
+            'city': {
+                        'id': user.city.id if user.city else None,
+                        'name': user.city.name if user.city else None
+                    } if user.city else None,
+                    'state': {
+                        'id': user.state.id if user.state else None,
+                        'name': user.state.name if user.state else None
+                    } if user.state else None,
+                    'country': {
+                        'id': user.country.id if user.country else None,
+                        'name': user.country.name if user.country else None
+                    } if user.country else None,
+            'pincode': user.pincode,
+            'profile_image_url': str(user.profile_image) if user.profile_image else None,
+            'permissions': user.permissions,
+            'shop_id': user.primary_shop.id if user.primary_shop else None
+        }
+
+    @staticmethod
+    def _build_login_response(user: User) -> dict:
+        """Build login response with tokens and user data"""
+        token = RefreshToken.for_user(user)
+        
+        return ResponseBuilder.success(
+            'Login successful',
+            {
+                'token': str(token.access_token),
+                'user': AuthService._build_user_data(user)
+            }
+        )
 
     @staticmethod
     def send_otp(phone_number: str) -> dict:
@@ -211,19 +253,7 @@ class AuthService:
                 # This deletes the "wasted" OTP count so the user isn't blocked later
                 OTP.objects.filter(phone_number=normalized_phone).delete()
 
-                # Generate tokens
-                refresh = RefreshToken.for_user(user)
-                return ResponseBuilder.success(
-                    'Login successful',
-                    {
-                        'access': str(refresh.access_token),
-                        'refresh': str(refresh),
-                        'user_id': str(user.id),
-                        'phone_number': user.phone_number,
-                        'email': user.email,
-                        'has_password': bool(user.password)
-                    }
-                )
+                return AuthService._build_login_response(user)
 
             # 2. PASSWORD LOGIN FLOW
             elif email:
@@ -247,18 +277,7 @@ class AuthService:
                 if not auth_user:
                     return ResponseBuilder.error('Invalid credentials')
 
-                refresh = RefreshToken.for_user(auth_user)
-                return ResponseBuilder.success(
-                    'Login successful',
-                    {
-                        'access': str(refresh.access_token),
-                        'refresh': str(refresh),
-                        'user_id': str(auth_user.id),
-                        'phone_number': auth_user.phone_number,
-                        'email': auth_user.email,
-                        'has_password': bool(auth_user.password)
-                    }
-                )
+                return AuthService._build_login_response(auth_user)
 
         except User.DoesNotExist:
             return ResponseBuilder.error('User not found')
@@ -360,12 +379,17 @@ class AuthService:
                 'profile_image_url': None  # Add if you have profile images
             }
             
+            # Get sidebar menu
+            sidebar_menu_result = MenuService.get_menus_with_modules()
+            sidebar_menu = sidebar_menu_result.get('data', []) if sidebar_menu_result.get('success') else []
+            
             return ResponseBuilder.success(
                 'Session data retrieved successfully',
                 {
                     'shop_list': shop_list,
                     'shop': current_shop,
-                    'user': enriched_user
+                    'user': enriched_user,
+                    'sidebarMenu': sidebar_menu
                 }
             )
         except Exception as e:

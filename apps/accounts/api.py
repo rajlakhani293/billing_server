@@ -9,7 +9,7 @@ from .schema import (
     LogoutSchema,
     OTPResponseSchema,
     RegistrationResponseSchema,
-    TokenResponseSchema,
+    LoginResponseSchema,
     SuccessResponseSchema,
     ErrorResponseSchema,
     SessionDataSchema,
@@ -61,7 +61,7 @@ def send_login_otp(request, payload: SendOTPSchema):
     return handle_response(result)
 
 # Login
-@auth_router.post('/login', response={200: TokenResponseSchema, 400: ErrorResponseSchema})
+@auth_router.post('/login', response={200: LoginResponseSchema, 400: ErrorResponseSchema})
 def login(request, payload: LoginSchema):
     result = AuthService.login(payload.dict())
     return handle_response(result)
@@ -115,6 +115,12 @@ def getAll(request):
     result = MenuService.getAll()
     return handle_response(result)
 
+# Get Menus with Modules
+@menu_master_router.get('/with-modules', response={200: dict, 400: ErrorResponseSchema})
+def get_menus_with_modules(request):
+    result = MenuService.get_menus_with_modules()
+    return handle_response(result)
+
 # Get Menu Master by ID
 @menu_master_router.get('/{menu_id}', response={200: MenuMasterResponseSchema, 400: ErrorResponseSchema})
 def getById(request, menu_id: str):
@@ -134,12 +140,6 @@ def update(request, menu_id: str, payload: MenuMasterUpdateSchema):
 def delete(request, menu_id: str):
     result = MenuService.delete(menu_id)
     return handle_not_found_response(result, "Menu not found")
-
-# Get Menus with Modules
-@menu_master_router.get('/with-modules', response={200: dict, 400: ErrorResponseSchema})
-def get_menus_with_modules(request):
-    result = MenuService.get_menus_with_modules()
-    return handle_response(result)
 
 
 # ================================================================= ================================================================= =================================================================

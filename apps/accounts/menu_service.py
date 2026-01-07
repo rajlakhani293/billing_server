@@ -170,12 +170,14 @@ class MenuService:
                 ).order_by('priority', 'created_at')
                 
                 menu_dict = {
+                    'id': menu.id,
                     'menu_name': menu.menu_name,
                     'priority': menu.priority,
                     'menu_icon_name': menu.menu_icon_name,
                     'menu_url': menu.menu_url,
                     'modules': [
                         {
+                            'id': module.id,
                             'module_name': module.module_name,
                             'module_url': module.module_url,
                             'priority': module.priority,

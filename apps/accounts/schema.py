@@ -68,18 +68,22 @@ class OTPResponseSchema(BaseResponseSchema):
     data: OTPDataSchema
 
 
+class LoginDataSchema(Schema):
+    token: str
+    user: dict
+
+
+class LoginResponseSchema(BaseResponseSchema):
+    data: LoginDataSchema
+
+
 class TokenDataSchema(Schema):
     access: str
     refresh: str
     user_id: int
     phone_number: str
     email: Optional[str] = None
-    has_password: bool
-
-
-class TokenResponseSchema(BaseResponseSchema):
-    data: TokenDataSchema
-
+    primary_shop: Optional[int] = None
 
 class UserDataSchema(Schema):
     id: int
