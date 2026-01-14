@@ -1,6 +1,5 @@
 from ninja import Router
 from cities_light.models import Country, Region, City
-from typing import List
 from .schema import (
     CountryListResponseSchema,
     RegionListResponseSchema,
