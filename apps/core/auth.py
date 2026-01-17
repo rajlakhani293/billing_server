@@ -1,27 +1,3 @@
-    # from ninja.security import HttpBearer
-    # from rest_framework_simplejwt.authentication import JWTAuthentication
-    # from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
-    # from django.conf import settings
-
-    # class BearerAuth(HttpBearer):
-    #     def authenticate(self, request, token):
-    #         if token.startswith("Bearer "):
-    #             token = token.replace("Bearer ", "")
-
-    #         jwt_auth = JWTAuthentication()
-    #         try:
-    #             validated_token = jwt_auth.get_validated_token(token)
-    #             user = jwt_auth.get_user(validated_token)
-                
-    #             if user and user.is_active:
-    #                 return user
-    #         except Exception as e:
-    #             print(f"JWT Auth Error: {str(e)}")
-    #             return None
-
-
-
-
 import jwt
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -33,7 +9,9 @@ class AuthBearer(HttpBearer):
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
             user_id: str = payload.get("user_id")
             shop_id: str = payload.get("shop_id")
-            if user_id and shop_id is None:
+            
+            # Both user_id and shop_id are required
+            if not user_id or not shop_id:
                 return None
             
             User = get_user_model()
@@ -42,6 +20,9 @@ class AuthBearer(HttpBearer):
                 user = User.objects.get(id=user_id_int)
             except (ValueError, User.DoesNotExist):
                 return None
+            
+            # Store shop_id in request for later use
+            request.shop_id = int(shop_id)
             
             return user
             

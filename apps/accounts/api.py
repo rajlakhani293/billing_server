@@ -22,37 +22,37 @@ auth_router = Router(tags=['Authentication'])
 
 # Send Otp for Signup
 @auth_router.post('/send-otp')
-def send_otp(payload: SendOTPSchema):
+def send_otp(request, payload: SendOTPSchema):
     return AuthService.send_otp(payload.phone_number)
 
 # Verify Otp
 @auth_router.post('/verify-otp')
-def verify_otp(payload: VerifyOTPSchema):
+def verify_otp(request, payload: VerifyOTPSchema):
     return AuthService.verify_otp(payload.dict())
 
 # Register Shop
 @auth_router.post('/register-shop')
-def register_shop(payload: ShopRegistrationSchema):
+def register_shop(request, payload: ShopRegistrationSchema):
     return AuthService.register_shop(payload)
 
 # Send OTP for Login
 @auth_router.post('/send-login-otp')
-def send_login_otp(payload: SendOTPSchema):
+def send_login_otp(request, payload: SendOTPSchema):
     return AuthService.send_login_otp(payload.phone_number)
 
 # Login
 @auth_router.post('/login')
-def login(payload: LoginSchema):
+def login(request, payload: LoginSchema):
     return AuthService.login(payload.dict())
 
 # Logout
 @auth_router.post('/logout', auth=AuthBearer())
-def logout(payload: LogoutSchema):
+def logout(request, payload: LogoutSchema):
     return AuthService.logout(payload.refresh)
 
 # Session Data
 @auth_router.post('/session-data', auth=AuthBearer())
-def session_data(payload: SessionDataRequestSchema):
+def session_data(request, payload: SessionDataRequestSchema):
     return AuthService.get_session_data(payload.dict())
 
 
@@ -62,10 +62,10 @@ def session_data(payload: SessionDataRequestSchema):
 
 # Get all users with OTP limit reached (blocked users)
 @auth_router.get('/blocked-users')
-def get_blocked_users():
+def get_blocked_users(request):
     return OTPLimitService.get_blocked_users()
 
 # Reset OTP timer for a specific user
 @auth_router.post('/reset-otp-limit')
-def reset_otp_limit(payload: ResetOTPSchema):
+def reset_otp_limit(request, payload: ResetOTPSchema):
     return OTPLimitService.reset_otp_limit(payload.phone_number)

@@ -55,10 +55,15 @@ class AuthService:
         """Build login response with tokens and user data"""
         token = RefreshToken.for_user(user)
         
+        # Add user_id and shop_id to the access token payload
+        access_token = token.access_token
+        access_token['user_id'] = user.id
+        access_token['shop_id'] = user.primary_shop.id if user.primary_shop else None
+        
         return ResponseBuilder.success(
             'Login successful',
             {
-                'token': str(token.access_token),
+                'token': str(access_token),
                 'user': AuthService._build_user_data(user)
             }
         )
@@ -74,12 +79,12 @@ class AuthService:
                 return ResponseBuilder.error('User already registered with this phone number')
 
             # Generate OTP
-            otp_instance = generate_otp(normalized_phone, otp_type='REGISTRATION')
+            otp_code = generate_otp(normalized_phone, otp_type='REGISTRATION')
 
             return ResponseBuilder.success(
                 'OTP sent successfully',
                 {
-                    'otp_code': otp_instance.otp_code
+                    'otp_code': otp_code
                 }
             )
         except ValueError as e:
@@ -97,18 +102,18 @@ class AuthService:
                 return ResponseBuilder.error('User already registered with this phone number')
 
             # Get OTP instance
-            otp_instance = OTP.objects.filter(
+            otp_code = OTP.objects.filter(
                 phone_number=normalized_phone
             ).order_by('-created_at').first()
 
-            if not otp_instance:
+            if not otp_code:
                 return ResponseBuilder.error('OTP not found')
 
             # Verify OTP
-            if otp_instance.verify(payload['otp_code']):               
+            if otp_code.verify(payload['otp_code']):               
                 # Mark OTP as verified
-                otp_instance.is_verified = True
-                otp_instance.save()
+                otp_code.is_verified = True
+                otp_code.save()
                 
                 registration_token = jwt.encode(
                     {
@@ -318,7 +323,7 @@ class AuthService:
             shop_list = []
             for shop in shops:
                 shop_data = {
-                    'shop_id': str(shop.id),
+                    'shop_id': shop.id,
                     'shop_code': shop.shop_code,
                     'shop_name': shop.shop_name,
                     'legal_name': shop.legal_name,
@@ -349,7 +354,7 @@ class AuthService:
             # Current shop (primary shop)
             current_shop = None
             if primary_shop:
-                current_shop = next((shop for shop in shop_list if shop['shop_id'] == str(primary_shop.id)), None)
+                current_shop = next((shop for shop in shop_list if shop['shop_id'] == primary_shop.id), None)
             
             # Enriched user data
             enriched_user = {
@@ -362,7 +367,7 @@ class AuthService:
                 'is_superuser': user.is_superuser,
                 'has_password': bool(user.password),
                 'permissions': user.permissions,
-                'profile_image_url': None  # Add if you have profile images
+                'profile_image_url': None
             }
             
             # Get sidebar menu
