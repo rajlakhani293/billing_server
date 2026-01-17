@@ -1,4 +1,4 @@
-from apps.accounts.helpers import ResponseBuilder, validate_unique_fields
+from apps.core.helpers import ResponseBuilder, validate_unique_fields
 from .models import MenuMaster, MenuModuleMaster
 
 

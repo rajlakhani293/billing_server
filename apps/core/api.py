@@ -6,7 +6,7 @@ from .schema import (
     CityListResponseSchema,
     ErrorResponseSchema
 )
-from apps.accounts.helpers import ResponseBuilder
+from apps.core.helpers import ResponseBuilder
 
 location_router = Router(tags=['Location'])
 

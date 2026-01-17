@@ -1,9 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.utils import timezone
-from django.core.exceptions import ValidationError
 from django.contrib.auth.hashers import make_password
-
 from apps.core.models import IntegerModel, TimestampedModel
 from cities_light.models import Country, Region, City
 
@@ -46,7 +44,7 @@ class UserManager(BaseUserManager):
 class User(AbstractBaseUser, PermissionsMixin, IntegerModel, TimestampedModel):
     role = models.ForeignKey('RolePermission', on_delete=models.PROTECT, related_name='users', null=True, blank=True)
     user_name = models.CharField(max_length=150, blank=True, null=True)
-    phone_number = models.CharField(max_length=15, blank=True, null=True, unique=True)
+    phone_number = models.CharField(max_length=10, blank=True, null=True, unique=True)
     email = models.EmailField(unique=True, max_length=255, blank=True, null=True)
     password = models.CharField(max_length=128, null=True, blank=True)
     shops = models.ManyToManyField('shops.Shop', related_name='staff', blank=True, help_text='The shops this user has access to')

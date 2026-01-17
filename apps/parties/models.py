@@ -24,7 +24,7 @@ class Party(IntegerModel, TimestampedModel):
     
     name = models.CharField(max_length=255, help_text='Party name')
     party_type = models.IntegerField( choices=PARTY_TYPE_CHOICES, default=1, help_text='1: Customer, 2: Vendor, 3: Both')
-    phone_number = models.CharField(max_length=15, blank=True, null=True)
+    phone_number = models.CharField(max_length=10, blank=True, null=True)
     email = models.EmailField(blank=True, null=True)
     address = models.CharField(max_length=500, blank=True, null=True)
     city = models.ForeignKey(City, on_delete=models.SET_NULL, null=True, blank=True)

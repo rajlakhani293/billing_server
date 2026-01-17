@@ -1,13 +1,15 @@
+import json
 from django.contrib.auth import authenticate
 from django.db import transaction
 from django.utils import timezone
 from datetime import timedelta
-from apps.accounts.helpers import check_recent_verification, normalize_phone_number, ResponseBuilder, generate_otp
+from apps.core.helpers import check_recent_verification, normalize_phone_number, ResponseBuilder, generate_otp
 from apps.accounts.schema import ShopRegistrationSchema
 from rest_framework_simplejwt.tokens import RefreshToken
 from .models import User, OTP
 from .menu_service import MenuService
 from apps.shops.models import Shop
+from ninja.errors import HttpError
 import re
 import random
 import string
@@ -15,7 +17,9 @@ from django.db import transaction
 import jwt
 from django.conf import settings
 
-
+# ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# AuthService
+# ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 class AuthService:
 
     @staticmethod
@@ -80,8 +84,6 @@ class AuthService:
             )
         except ValueError as e:
             return ResponseBuilder.error(str(e))
-        except Exception as e:
-            return ResponseBuilder.error(f'Failed to send OTP: {str(e)}')
 
     @staticmethod
     def verify_otp(payload: dict) -> dict:
@@ -129,12 +131,10 @@ class AuthService:
                 return ResponseBuilder.error('Invalid OTP code')
         except ValueError as e:
             return ResponseBuilder.error(str(e))
-        except Exception as e:
-            return ResponseBuilder.error(f'Failed to verify OTP: {str(e)}')
 
 
     @staticmethod
-    def register_shop(request, payload: ShopRegistrationSchema) -> dict:
+    def register_shop(payload: ShopRegistrationSchema) -> dict:
         """Register a new shop with user - requires valid registration token"""
         data = payload.dict()
         
@@ -201,7 +201,7 @@ class AuthService:
 
             # Check if user exists
             if not User.objects.filter(phone_number=normalized_phone).exists():
-                return ResponseBuilder.error('User not found with this phone number')
+                return ResponseBuilder.error(HttpError(400, 'User not found with this phone number'))
 
             # Generate OTP
             otp_instance = generate_otp(normalized_phone, otp_type='LOGIN')
@@ -212,10 +212,8 @@ class AuthService:
                     'otp_code': otp_instance.otp_code
                 }
             )
-        except ValueError as e:
-            return ResponseBuilder.error(str(e))
         except Exception as e:
-            return ResponseBuilder.error(f'Failed to send login OTP: {str(e)}')
+            return ResponseBuilder.error(HttpError(400, str(e)))
 
     @staticmethod
     def login(payload: dict) -> dict:
@@ -285,25 +283,13 @@ class AuthService:
             return ResponseBuilder.error(f'Login failed: {str(e)}')
 
     @staticmethod
-    def logout(refresh_token: str) -> dict:
-        """Logout user by blacklisting refresh token"""
+    def logout(request):
         try:
-            from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
-            
-            # Get refresh token
-            try:
-                token = RefreshToken(refresh_token)
-                outstanding_token = OutstandingToken.objects.get(token=token)
-                
-                # Blacklist token
-                BlacklistedToken.objects.get_or_create(
-                    token=outstanding_token.token,
-                    blacklisted_at=timezone.now()
-                )
-                
-                return ResponseBuilder.success('Logout successful')
-            except Exception:
-                return ResponseBuilder.error('Invalid refresh token')
+            data = json.loads(request.body)
+            refresh_token = data.get('refresh')
+            token = RefreshToken(refresh_token)
+            token.blacklist() 
+            return ResponseBuilder.success('Logout successful')
         except Exception as e:
             return ResponseBuilder.error(f'Logout failed: {str(e)}')
 
@@ -395,7 +381,9 @@ class AuthService:
         except Exception as e:
             return ResponseBuilder.error(f'Failed to get session data: {str(e)}')
 
-
+# ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# Shop Service
+# ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 class ShopService:
     
     @staticmethod
@@ -553,77 +541,9 @@ class ShopService:
             None,
         )
 
-
-class LocationService:
-    
-    @staticmethod
-    def get_countries() -> dict:
-        """Get all available countries"""
-        try:
-            from cities_light.models import Country
-            countries = Country.objects.all().order_by('name')
-            
-            return ResponseBuilder.success(
-                'Countries retrieved successfully',
-                [
-                    {
-                        'id': country.id,
-                        'name': country.name,
-                        'code': country.code2
-                    } for country in countries
-                ]
-            )
-        except Exception as e:
-            return ResponseBuilder.error(f'Failed to get countries: {str(e)}')
-    
-    @staticmethod
-    def get_states(country_id: int = None) -> dict:
-        """Get states by country or all states"""
-        try:
-            from cities_light.models import Region
-            if country_id:
-                states = Region.objects.filter(country_id=country_id).order_by('name')
-            else:
-                states = Region.objects.all().order_by('name')
-            
-            return ResponseBuilder.success(
-                'States retrieved successfully',
-                [
-                    {
-                        'id': state.id,
-                        'name': state.name,
-                        'country_id': state.country_id
-                    } for state in states
-                ]
-            )
-        except Exception as e:
-            return ResponseBuilder.error(f'Failed to get states: {str(e)}')
-    
-    @staticmethod
-    def get_cities(state_id: int = None) -> dict:
-        """Get cities by state or all cities"""
-        try:
-            from cities_light.models import City
-            if state_id:
-                cities = City.objects.filter(region_id=state_id).order_by('name')
-            else:
-                cities = City.objects.all().order_by('name')
-            
-            return ResponseBuilder.success(
-                'Cities retrieved successfully',
-                [
-                    {
-                        'id': city.id,
-                        'name': city.name,
-                        'state_id': city.region_id,
-                        'country_id': city.country_id
-                    } for city in cities
-                ]
-            )
-        except Exception as e:
-            return ResponseBuilder.error(f'Failed to get cities: {str(e)}')
-
-
+# ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# OTP Limit Service
+# ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 class OTPLimitService:
     """Service for managing OTP limits and blocked users"""
     

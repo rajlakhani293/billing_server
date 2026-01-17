@@ -1,8 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from django.forms import ModelMultipleChoiceField
 from .models import User, OTP, RolePermission, MenuMaster, MenuModuleMaster
-from apps.shops.models import Shop
 
 
 @admin.register(User)

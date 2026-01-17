@@ -32,11 +32,11 @@ class AuthBearer(HttpBearer):
         try:
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
             user_id: str = payload.get("user_id")
-            if user_id is None:
+            shop_id: str = payload.get("shop_id")
+            if user_id and shop_id is None:
                 return None
             
             User = get_user_model()
-            # Convert string user_id to integer since User model uses AutoField
             try:
                 user_id_int = int(user_id)
                 user = User.objects.get(id=user_id_int)
