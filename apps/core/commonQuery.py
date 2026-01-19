@@ -13,22 +13,6 @@ class CommonQuery:
             else:
                 print(f"\033[36m[SQL]\033[0m {sql}")
     
-    @staticmethod
-    def getContextData(request=None):
-        """Extracts tenant IDs and IP from request"""
-        context_data = {'user_id': None, 'shop_id': None, 'ip_address': None}
-        if request:
-            if hasattr(request, 'user') and request.user.is_authenticated:
-                context_data['user_id'] = request.user.id
-                shop_id = (
-                    request.META.get('HTTP_X_SHOP_ID') or 
-                    request.GET.get('shop_id') or
-                    getattr(request.user, 'primary_shop_id', None)
-                )
-                if shop_id:
-                    context_data['shop_id'] = int(shop_id)
-            context_data['ip_address'] = CommonQuery.getClientIp(request)
-        return context_data
 
     @staticmethod
     def getClientIp(request):
@@ -36,7 +20,7 @@ class CommonQuery:
         return x_forwarded_for.split(',')[0] if x_forwarded_for else request.META.get('REMOTE_ADDR')
 
     @staticmethod
-    def buildWhere(whereInput, apply_defaults=True, request=None):
+    def buildWhere(whereInput, request=None):
         """Builds Django Q objects with status and tenant filters"""
         where_q = Q()
         
@@ -55,17 +39,7 @@ class CommonQuery:
         # --- 2. Apply Status Filter ---
         if 'status' not in str(where_q):
             where_q &= ~Q(status=2)
-        
-        # --- 3. Apply Tenant Defaults ---
-        if apply_defaults:
-            ctx = CommonQuery.getContextData(request)
-            
-            if ctx['user_id']:
-                where_q &= Q(user_id=ctx['user_id'])
-            
-            if 'shop_id' not in str(where_q) and ctx['shop_id']:
-                where_q &= Q(shop_id=ctx['shop_id'])
-        
+                
         return where_q
 
     @staticmethod
@@ -143,14 +117,8 @@ class CommonQuery:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def createRecord(model, data, request=None, transaction=None, requireTenantFields=False):
+    def createRecord(model, data, request=None, transaction=None):
         enriched = data.copy()
-        
-        if requireTenantFields:
-            # For models without user_id field (like Party), only require shop_id
-            if not data.get('shop_id'):
-                raise ValueError("shop_id is required in payload when requireTenantFields=True")
-            # shop_id is already in enriched from data.copy()
         
         with transaction.atomic() if not transaction else transaction.mark_for_rollback_at_column_break():
             result = model.objects.create(**enriched)
@@ -158,26 +126,13 @@ class CommonQuery:
         return result
 
     @staticmethod
-    def updateRecordById(model, whereInput, data, request=None, requireTenantFields=False):
-        where_q = CommonQuery.buildWhere(whereInput, requireTenantFields, request)
+    def updateRecordById(model, whereInput, data, request=None):
+        where_q = CommonQuery.buildWhere(whereInput, request)
         
         old_record = model.objects.filter(where_q).first()
         if not old_record: 
             return None
-        
-        ctx = CommonQuery.getContextData(request)
-        safe_data = data.copy()
-        
-        if requireTenantFields:
-            # Both shop_id and user_id are MANDATORY when requireTenantFields=True
-            if not ctx['shop_id']:
-                raise ValueError("shop_id is required when requireTenantFields=True")
-            if not ctx['user_id']:
-                raise ValueError("user_id is required when requireTenantFields=True")
-            
-            safe_data['shop_id'] = ctx['shop_id']
-            safe_data['user_id'] = ctx['user_id']
-        
+                
         # Update the record
         count = model.objects.filter(where_q).update(**safe_data)
         if count == 0: 
@@ -189,7 +144,7 @@ class CommonQuery:
 
     @staticmethod
     def softDeleteById(model, whereInput, request=None):
-        where_q = CommonQuery.buildWhere(whereInput, True, request)
+        where_q = CommonQuery.buildWhere(whereInput, request)
         
         records_to_delete = list(model.objects.filter(where_q))
         if not records_to_delete: 
@@ -213,8 +168,8 @@ class CommonQuery:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def findOneRecord(model, whereInput={}, options={}, request=None, requireTenantFields=False):
-        where_q = CommonQuery.buildWhere(whereInput, requireTenantFields, request)
+    def findOneRecord(model, whereInput={}, options={}, request=None):
+        where_q = CommonQuery.buildWhere(whereInput, request)
         qs = model.objects.filter(where_q)
         
         # Handle attributes (field selection)
@@ -240,8 +195,8 @@ class CommonQuery:
         return result
 
     @staticmethod
-    def findAllRecords(model, filters={}, options={}, request=None, requireTenantFields=False):
-        where_q = CommonQuery.buildWhere(filters, requireTenantFields, request)
+    def findAllRecords(model, filters={}, options={}, request=None):
+        where_q = CommonQuery.buildWhere(filters, request)
         qs = model.objects.filter(where_q)
         
         # Handle attributes (field selection)
@@ -281,37 +236,37 @@ class CommonQuery:
 
     @staticmethod
     def sumRecords(model, field, filters={}, request=None):
-        return model.objects.filter(CommonQuery.buildWhere(filters, True, request)).aggregate(s=Sum(field))['s'] or 0
+        return model.objects.filter(CommonQuery.buildWhere(filters, request)).aggregate(s=Sum(field))['s'] or 0
 
     @staticmethod
     def minRecords(model, field, whereInput={}, request=None):
-        return model.objects.filter(CommonQuery.buildWhere(whereInput, True, request)).aggregate(m=Min(field))['m']
+        return model.objects.filter(CommonQuery.buildWhere(whereInput, request)).aggregate(m=Min(field))['m']
 
     @staticmethod
     def maxRecords(model, field, whereInput={}, request=None):
-        return model.objects.filter(CommonQuery.buildWhere(whereInput, True, request)).aggregate(m=Max(field))['m']
+        return model.objects.filter(CommonQuery.buildWhere(whereInput, request)).aggregate(m=Max(field))['m']
 
     @staticmethod
     def incrementRecords(model, field, by=1, whereInput={}, request=None):
-        return model.objects.filter(CommonQuery.buildWhere(whereInput, True, request)).update(**{field: F(field) + by})
+        return model.objects.filter(CommonQuery.buildWhere(whereInput, request)).update(**{field: F(field) + by})
 
     @staticmethod
     def decrementRecords(model, field, by=1, whereInput={}, request=None):
-        return model.objects.filter(CommonQuery.buildWhere(whereInput, True, request)).update(**{field: F(field) - by})
+        return model.objects.filter(CommonQuery.buildWhere(whereInput, request)).update(**{field: F(field) - by})
 
     # ------------------------------------------------------------------
     # ADVANCED PAGINATION
     # ------------------------------------------------------------------
 
     @staticmethod
-    def fetchPaginatedData(model, reqBody, fieldConfig, options={}, request=None, dateField="created_at", custom_related_fields=None, requireTenantFields=False):
+    def fetchPaginatedData(model, reqBody, fieldConfig, options={}, request=None, dateField="created_at", custom_related_fields=None):
         try:
             page = max(int(reqBody.get('page', 1)), 1)
             limit_val = reqBody.get('limit', 10)
             is_all = str(limit_val).lower() == 'all'
             limit = None if is_all else int(limit_val)
             
-            filters_q = CommonQuery.buildWhere(reqBody.get('filter', {}), requireTenantFields, request)
+            filters_q = CommonQuery.buildWhere(reqBody.get('filter', {}), request)
             
             # Status Logic
             status = reqBody.get('status')
