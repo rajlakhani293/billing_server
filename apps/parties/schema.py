@@ -80,6 +80,8 @@ class PartyFilterSchema(Schema):
     endDate: Optional[str] = None
     sortBy: Optional[str] = "created_at"
     sortDirection: Optional[str] = "descending"
+    user_id: Optional[int] = None
+    shop_id: Optional[int] = None
 
 
 class SuccessResponseSchema(Schema):

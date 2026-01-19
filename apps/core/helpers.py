@@ -1,4 +1,3 @@
-from typing import Tuple, Any, Dict
 import re
 from apps.accounts.models import OTP
 from phonenumbers import parse as parse_phone_number, is_valid_number
@@ -43,36 +42,7 @@ def validation_error_handler(request, exc: ValidationError):
         "success": False,
         "code": 400,
         "message": message,
-        "data": None
     }, status=400)
-
-def validate_unique_fields(payload: dict, validation_config: dict, exclude_id: str = None, exclude_status: int = 2):
-   
-    model_class = validation_config.get('model')
-    unique_fields = validation_config.get('fields', [])
-    
-    if not model_class or not unique_fields:
-        return True, {}
-    
-    errors = {}
-    
-    for field_name in unique_fields:
-        if field_name in payload and payload[field_name] is not None:
-            filter_kwargs = {field_name: payload[field_name]}
-            queryset = model_class.objects.filter(**filter_kwargs)
-            
-            if exclude_status is not None:
-                queryset = queryset.exclude(status=exclude_status)
-            
-            if exclude_id:
-                queryset = queryset.exclude(id=exclude_id)
-            
-            if queryset.exists():
-                field_display_name = field_name.replace('_', ' ').title()
-                errors[field_name] = f'{field_display_name} already exists'
-    
-    is_valid = len(errors) == 0
-    return is_valid, errors
 
 class ResponseBuilder:
     """Standardized response builder for API responses"""
@@ -88,7 +58,7 @@ class ResponseBuilder:
         }
     
     @staticmethod
-    def error(message: str, data=None, status_code: int = 400) -> dict:
+    def error(message: str, status_code: int = 400) -> dict:
         """Return error response"""
         # Handle HttpError exceptions
         if isinstance(message, HttpError):
@@ -96,101 +66,13 @@ class ResponseBuilder:
                 'success': False,
                 'code': message.status_code,
                 'message': message.message,
-                'data': data
             }
         # Handle regular error messages
         return {
             'success': False,
             'code': status_code,
             'message': message,
-            'data': data
         }
-
-def handle_response(result: Dict[str, Any], success_key: str = 'success') -> Tuple[int, Dict[str, Any]]:
-
-    if result.get(success_key, False):
-        # Format response in industry standard format
-        response = {
-            'success': True,
-            'code': result.get('code', 200),
-            'message': result.get('message', 'Success'),
-            'data': result.get('data', result)
-        }
-        return 200, response
-    else:
-        # Format error response in industry standard format
-        response = {
-            'success': False,
-            'code': result.get('code', 400),
-            'message': result.get('message', 'Error occurred'),
-            'data': {
-                'details': result.get('details'),
-                'field_errors': result.get('errors')
-            }
-        }
-        # Remove None values from data
-        response['data'] = {k: v for k, v in response['data'].items() if v is not None}
-        if not response['data']:
-            response['data'] = None
-        return 400, response
-
-
-def handle_not_found_response(result: Dict[str, Any], not_found_message: str) -> Tuple[int, Dict[str, Any]]:
-    """
-    Helper function to handle not found responses
-    
-    Args:
-        result: Service response dictionary
-        not_found_message: Message to check for not found
-    
-    Returns:
-        Tuple of (status_code, response_dict)
-    """
-    if result.get('message') == not_found_message:
-        response = {
-            'success': False,
-            'code': 404,
-            'message': result.get('message', 'Resource not found'),
-            'data': {
-                'details': result.get('details')
-            }
-        }
-        # Remove None values from data
-        response['data'] = {k: v for k, v in response['data'].items() if v is not None}
-        if not response['data']:
-            response['data'] = None
-        return 404, response
-    else:
-        return handle_response(result)
-
-
-def create_pagination_response(items: list, page: int, limit: int, total_count: int) -> Dict[str, Any]:
-    """
-    Helper function to create paginated response
-    
-    Args:
-        items: List of items
-        page: Current page number
-        limit: Items per page
-        total_count: Total number of items
-    
-    Returns:
-        Paginated response dictionary
-    """
-    total_pages = (total_count + limit - 1) // limit
-    
-    return {
-        'items': items,
-        'pagination': {
-            'page': page,
-            'limit': limit,
-            'total_count': total_count,
-            'total_pages': total_pages,
-            'has_next': page < total_pages,
-            'has_previous': page > 1
-        }
-    }
-
 
 def normalize_phone_number(phone_number: str) -> str:
         try:
@@ -214,6 +96,57 @@ def normalize_phone_number(phone_number: str) -> str:
         except Exception as e:
             raise ValueError(f'Invalid phone number format: {str(e)}')
 
+def validate_request(data, required_fields, unique_checks=None, request=None):
+    """Validate request data with required fields and unique checks
+    
+    Args:
+        data: Dictionary containing request data
+        required_fields: Dict of {field_name: display_name} for required validation
+        unique_checks: Dict with 'model' and 'fields' list for unique validation
+        request: Django request object for tenant context
+    
+    Returns:
+        Dict of field errors (empty if validation passes)
+    """
+    errors = {}
+    
+    # Check required fields
+    for field, display_name in required_fields.items():
+        if field not in data or data[field] is None or str(data[field]).strip() == '':
+            errors[field] = f"{display_name} is required"
+    
+    # Check unique fields
+    if unique_checks:
+        model = unique_checks.get('model')
+        unique_fields = unique_checks.get('fields', [])
+        
+        for field in unique_fields:
+            if field in data and data[field]:
+                # Build filter for unique check
+                filter_kwargs = {field: data[field]}
+                
+                # Add shop filter for multi-tenant
+                if request and hasattr(request, 'user') and request.user.is_authenticated:
+                    shop_id = (
+                        getattr(request.user, 'primary_shop_id', None) or
+                        request.META.get('HTTP_X_SHOP_ID') or
+                        request.GET.get('shop_id')
+                    )
+                    if shop_id:
+                        filter_kwargs['shop_id'] = shop_id
+                
+                # Exclude current record for updates
+                exclude_id = data.get('exclude_id')
+                if exclude_id:
+                    existing = model.objects.filter(**filter_kwargs).exclude(id=exclude_id).first()
+                else:
+                    existing = model.objects.filter(**filter_kwargs).first()
+                
+                if existing:
+                    errors[field] = f"This {field.replace('_', ' ')} already exists"
+    
+    return errors
+
 
 def generate_otp(phone_number: str, validity_minutes: int = 5, otp_type: str = 'LOGIN'):
     """Generate OTP with rate limiting - block for 1 hour if 3 OTPs requested within last hour"""
@@ -226,12 +159,22 @@ def generate_otp(phone_number: str, validity_minutes: int = 5, otp_type: str = '
     ).count()
 
     if request_count >= 3:
-        # Update the latest record to reflect the block time if not already set
+        # Get the most recent OTP record to check block time
         recent = OTP.objects.filter(phone_number=phone_number).first()
-        if recent and not recent.blocked_until:
-            recent.blocked_until = timezone.now() + timedelta(hours=1)
-            recent.save()
-        raise Exception("Limit reached. You requested 3 OTPs. Try again after 1 hour.")
+        if recent:
+            # Set block time if not already set
+            if not recent.blocked_until:
+                recent.blocked_until = timezone.now() + timedelta(hours=1)
+                recent.save()
+            
+            # Calculate remaining time
+            remaining_seconds = recent.get_block_remaining_time()
+            if remaining_seconds > 0:
+                remaining_minutes = remaining_seconds // 60
+                remaining_seconds_mod = remaining_seconds % 60
+                raise Exception(f"OTP Limit reached. Try again after {remaining_minutes} minutes and {remaining_seconds_mod} seconds.")
+        else:
+            raise Exception("OTP Limit reached. Try again after 1 hour.")
 
     # Generate new OTP
     secret = pyotp.random_base32()

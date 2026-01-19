@@ -5,7 +5,7 @@ from .models import Party
 
 @admin.register(Party)
 class PartyAdmin(ModelAdmin):
-    list_display = ['name', 'party_type', 'phone_number', 'email', 'wallet_balance', 'balance_type', 'customer_category', 'status', 'shop']
+    list_display = ["id",'name', 'party_type', 'phone_number', 'email', 'wallet_balance', 'balance_type', 'customer_category', 'status', 'shop']
     list_filter = ['party_type', 'customer_category', 'balance_type', 'status', 'shop', 'city', 'state', 'country']
     search_fields = ['name', 'phone_number', 'email']
     list_editable = ['status']
