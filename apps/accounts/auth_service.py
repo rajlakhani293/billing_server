@@ -77,12 +77,12 @@ class AuthService:
                 return ResponseBuilder.error('User already registered with this phone number')
 
             # Generate OTP
-            otp_code = generate_otp(normalized_phone, otp_type='REGISTRATION')
+            otp_instance = generate_otp(normalized_phone, otp_type='REGISTRATION')
 
             return ResponseBuilder.success(
                 'OTP sent successfully',
                 {
-                    'otp_code': otp_code
+                    'otp_code': otp_instance.otp_code
                 }
             )
         except ValueError as e:
