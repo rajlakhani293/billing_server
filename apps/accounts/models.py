@@ -42,14 +42,12 @@ class UserManager(BaseUserManager):
 
 
 class User(AbstractBaseUser, PermissionsMixin, IntegerModel, TimestampedModel):
-    role = models.ForeignKey('RolePermission', on_delete=models.PROTECT, related_name='users', null=True, blank=True)
     user_name = models.CharField(max_length=150, blank=True, null=True)
     phone_number = models.CharField(max_length=10, blank=True, null=True, unique=True)
     email = models.EmailField(unique=True, max_length=255, blank=True, null=True)
     password = models.CharField(max_length=128, null=True, blank=True)
     shops = models.ManyToManyField('shops.Shop', related_name='staff', blank=True, help_text='The shops this user has access to')
     primary_shop = models.ForeignKey('shops.Shop', on_delete=models.SET_NULL, null=True, blank=True, related_name='primary_staff')
-    permissions = models.JSONField(default=list, blank=True, help_text='List of permissions user has access to')
     address = models.CharField(max_length=255, blank=True, null=True)
     city = models.ForeignKey(City, on_delete=models.SET_NULL, null=True, blank=True)
     state = models.ForeignKey(Region, on_delete=models.SET_NULL, null=True, blank=True)
@@ -145,23 +143,6 @@ class OTP(IntegerModel, TimestampedModel):
             raise Exception(f"You have reached the OTP service limit. Try after {minutes} minutes.")
 
         return self.otp_code == otp_code
-
-        
-class RolePermission(IntegerModel, TimestampedModel):
-    role_name = models.CharField(max_length=150, blank=False, null=False)
-    permissions = models.JSONField(default=list, blank=True, help_text='List of permissions user has access to')
-    shop = models.ForeignKey('shops.Shop', on_delete=models.CASCADE, related_name='roles', null=True, blank=True)
-    status = models.IntegerField(default=0, help_text='0: Active, 1: Inactive, 2: Deleted')
-
-    class Meta:
-        db_table = 'role_permissions'
-        verbose_name = 'Role Permission'
-        verbose_name_plural = 'Role Permissions'
-        ordering = ['-created_at']
-
-    def __str__(self):
-        return self.role_name
-
 
 class MenuMaster(IntegerModel, TimestampedModel):
     menu_name = models.CharField(max_length=100, null=False, unique=True)

@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User, OTP, RolePermission, MenuMaster, MenuModuleMaster
+from .models import User, OTP, MenuMaster, MenuModuleMaster
 
 
 @admin.register(User)
@@ -97,7 +97,7 @@ class UserAdmin(BaseUserAdmin):
         (None, {'fields': ('phone_number', 'password')}),
         ('Personal Info', {'fields': ('id','email', 'user_name')}),
         ('Address Info', {'fields': ('address', 'country', 'state', 'city', 'pincode')}),
-        ('Shop Info', {'fields': ('role', 'shops', 'primary_shop', 'permissions')}),
+        ('Shop Info', {'fields': ('shops', 'primary_shop', 'permissions')}),
         ('Permissions', {'fields': ('is_verified', 'is_active', 'is_staff', 'is_superuser', 'user_lock', 'status', 'groups', 'user_permissions')}),
         ('Important dates', {'fields': ('last_login', 'created_at', 'updated_at')}),
     )
@@ -105,7 +105,7 @@ class UserAdmin(BaseUserAdmin):
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('phone_number', 'password1', 'password2', 'email', 'user_name', 'is_verified', 'role', 'shops', 'primary_shop', 'permissions', 'address', 'country', 'state', 'city', 'pincode', 'profile_image', 'is_active', 'user_lock', 'status'),
+            'fields': ('phone_number', 'password1', 'password2', 'email', 'user_name', 'is_verified', 'shops', 'primary_shop', 'permissions', 'address', 'country', 'state', 'city', 'pincode', 'profile_image', 'is_active', 'user_lock', 'status'),
         }),
     )
 
@@ -126,63 +126,6 @@ class OTPAdmin(admin.ModelAdmin):
         ('Rate Limiting', {'fields': ('attempts', 'blocked_until')}),
         ('Timestamps', {'fields': ('created_at', 'updated_at')}),
     )
-
-
-@admin.register(RolePermission)
-class RolePermissionAdmin(admin.ModelAdmin):
-    list_display = ['role_name', 'shop', 'status', 'created_at', 'updated_at']
-    list_filter = ['status', 'created_at', 'shop']
-    search_fields = ['role_name', 'shop__shop_name']
-    ordering = ['-created_at']
-    readonly_fields = ['id', 'created_at', 'updated_at']
-
-    def has_add_permission(self, request):
-        # Superusers and shop owners can add roles
-        return request.user.is_superuser or (request.user.is_staff and request.user.shops.exists())
-
-    def has_view_permission(self, request, obj=None):
-        # Superusers and shop owners can view roles
-        return request.user.is_superuser or (request.user.is_staff and request.user.shops.exists())
-
-    def has_module_permission(self, request):
-        # Superusers and shop owners can see the module
-        return request.user.is_superuser or (request.user.is_staff and request.user.shops.exists())
-
-    def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        # Superusers see all roles
-        if request.user.is_superuser:
-            return qs
-        # Shop owners only see roles from their shops
-        elif request.user.is_staff and request.user.shops.exists():
-            return qs.filter(shop__in=request.user.shops.all())
-        return qs.none()
-
-    def has_change_permission(self, request, obj=None):
-        # Superusers can change everything
-        if request.user.is_superuser:
-            return True
-        # Shop owners can only edit roles from their shops
-        if request.user.is_staff and request.user.shops.exists() and obj:
-            return obj.shop and obj.shop.id in [shop.id for shop in request.user.shops.all()]
-        return super().has_change_permission(request, obj)
-
-    def has_delete_permission(self, request, obj=None):
-        # Superusers can delete everything
-        if request.user.is_superuser:
-            return True
-        # Shop owners can only delete roles from their shops
-        if request.user.is_staff and request.user.shops.exists() and obj:
-            return obj.shop and obj.shop.id in [shop.id for shop in request.user.shops.all()]
-        return super().has_delete_permission(request, obj)
-
-    fieldsets = (
-        ('Role Info', {'fields': ('role_name', 'shop')}),
-        ('Permissions', {'fields': ('permissions',)}),
-        ('Status', {'fields': ('status',)}),
-        ('Timestamps', {'fields': ('created_at', 'updated_at')}),
-    )
-
 
 @admin.register(MenuMaster)
 class MenuMasterAdmin(admin.ModelAdmin):

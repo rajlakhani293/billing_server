@@ -18,7 +18,7 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='Shop',
             fields=[
-                ('id', models.AutoField(editable=False, primary_key=True, serialize=False)),
+                ('id', models.BigAutoField(editable=False, primary_key=True, serialize=False)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('shop_code', models.CharField(max_length=150, unique=True)),

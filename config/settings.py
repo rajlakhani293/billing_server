@@ -52,18 +52,12 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
-    'phonenumber_field',
     'cities_light',
     'corsheaders',
 
     'apps.accounts',
     'apps.shops',
-    'apps.products',
     'apps.parties',
-    'apps.inventory',
-    'apps.invoices',
-    'apps.payments',
-    'apps.reports',
     'apps.core',
 
 ]
@@ -197,9 +191,7 @@ SIMPLE_JWT = {
     'TOKEN_TYPE_CLAIM': 'token_type',
 }
 
-# Phone Number Field Settings
-PHONENUMBER_DEFAULT_REGION = 'IN'
-PHONENUMBER_DB_FORMAT = 'NATIONAL'
+
 
 # Cities Light Settings - Import only India data (with states and cities)
 CITIES_LIGHT_INCLUDE_COUNTRIES = ['IN']

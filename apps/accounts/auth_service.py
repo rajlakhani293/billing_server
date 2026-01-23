@@ -27,7 +27,6 @@ class AuthService:
         """Build complete user data object for login response"""
         return {
             'id': user.id,
-            'role_id': user.role.id if user.role else None,
             'user_name': user.user_name,
             'phone_number': user.phone_number,
             'email': user.email,
@@ -46,7 +45,6 @@ class AuthService:
                     } if user.country else None,
             'pincode': user.pincode,
             'profile_image_url': str(user.profile_image) if user.profile_image else None,
-            'permissions': user.permissions,
             'shop_id': user.primary_shop.id if user.primary_shop else None
         }
 
@@ -366,7 +364,6 @@ class AuthService:
                 'is_staff': user.is_staff,
                 'is_superuser': user.is_superuser,
                 'has_password': bool(user.password),
-                'permissions': user.permissions,
                 'profile_image_url': None
             }
             
