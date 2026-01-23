@@ -2,8 +2,7 @@ from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.utils import timezone
 from django.contrib.auth.hashers import make_password
-from apps.core.models import IntegerModel, TimestampedModel
-from cities_light.models import Country, Region, City
+from apps.core.models import IntegerModel, TimestampedModel, CountryMaster, StateMaster, CityMaster
 
 
 class UserManager(BaseUserManager):
@@ -49,9 +48,9 @@ class User(AbstractBaseUser, PermissionsMixin, IntegerModel, TimestampedModel):
     shops = models.ManyToManyField('shops.Shop', related_name='staff', blank=True, help_text='The shops this user has access to')
     primary_shop = models.ForeignKey('shops.Shop', on_delete=models.SET_NULL, null=True, blank=True, related_name='primary_staff')
     address = models.CharField(max_length=255, blank=True, null=True)
-    city = models.ForeignKey(City, on_delete=models.SET_NULL, null=True, blank=True)
-    state = models.ForeignKey(Region, on_delete=models.SET_NULL, null=True, blank=True)
-    country = models.ForeignKey(Country, on_delete=models.SET_NULL, null=True, blank=True)
+    city = models.ForeignKey(CityMaster, on_delete=models.SET_NULL, null=True, blank=True)
+    state = models.ForeignKey(StateMaster, on_delete=models.SET_NULL, null=True, blank=True)
+    country = models.ForeignKey(CountryMaster, on_delete=models.SET_NULL, null=True, blank=True)
     pincode = models.CharField(max_length=10, blank=True, null=True)
     profile_image = models.ImageField(upload_to='profile_images', blank=True, null=True)
     is_staff = models.BooleanField(default=False)

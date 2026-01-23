@@ -440,16 +440,16 @@ class ShopService:
 
         # Validate city, state, country existence
         if data.get('city'):
-            from cities_light.models import City, Region, Country
-            if not City.objects.filter(id=data['city']).exists():
+            from apps.core.models import CityMaster, StateMaster, CountryMaster
+            if not CityMaster.objects.filter(id=data['city']).exists():
                 errors['city'] = 'Invalid city ID'
         
         if data.get('state'):
-            if not Region.objects.filter(id=data['state']).exists():
+            if not StateMaster.objects.filter(id=data['state']).exists():
                 errors['state'] = 'Invalid state ID'
         
         if data.get('country'):
-            if not Country.objects.filter(id=data['country']).exists():
+            if not CountryMaster.objects.filter(id=data['country']).exists():
                 errors['country'] = 'Invalid country ID'
 
         return (len(errors) == 0, errors)

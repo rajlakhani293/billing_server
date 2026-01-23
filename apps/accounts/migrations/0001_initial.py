@@ -9,9 +9,8 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('cities_light', '0012_city_translations_country_translations_and_more'),
+        ('core', '0001_initial'),
         ('auth', '0012_alter_user_first_name_max_length'),
-
     ]
 
     operations = [
@@ -100,11 +99,11 @@ class Migration(migrations.Migration):
                 ('is_verified', models.BooleanField(default=False)),
                 ('user_lock', models.BooleanField(default=False)),
                 ('status', models.IntegerField(default=0, help_text='0: Active, 1: Inactive, 2: Deleted')),
-                ('city', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to='cities_light.city')),
-                ('country', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to='cities_light.country')),
+                ('city', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to='core.citymaster')),
+                ('country', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to='core.countrymaster')),
                 ('groups', models.ManyToManyField(blank=True, help_text='The groups this user belongs to. A user will get all permissions granted to each of their groups.', related_name='user_set', related_query_name='user', to='auth.group', verbose_name='groups')),
 
-                ('state', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to='cities_light.region')),
+                ('state', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to='core.statemaster')),
                 ('user_permissions', models.ManyToManyField(blank=True, help_text='Specific permissions for this user.', related_name='user_set', related_query_name='user', to='auth.permission', verbose_name='user permissions')),
             ],
             options={

@@ -1,7 +1,6 @@
 from django.db import models
 from django.core.exceptions import ValidationError
-from apps.core.models import IntegerModel, TimestampedModel
-from cities_light.models import Country, Region, City
+from apps.core.models import IntegerModel, TimestampedModel, CountryMaster, StateMaster, CityMaster
 
 
 class Party(IntegerModel, TimestampedModel):
@@ -27,9 +26,9 @@ class Party(IntegerModel, TimestampedModel):
     phone_number = models.CharField(max_length=10, blank=True, null=True)
     email = models.EmailField(blank=True, null=True)
     address = models.CharField(max_length=500, blank=True, null=True)
-    city = models.ForeignKey(City, on_delete=models.SET_NULL, null=True, blank=True)
-    state = models.ForeignKey(Region, on_delete=models.SET_NULL, null=True, blank=True)
-    country = models.ForeignKey(Country, on_delete=models.SET_NULL, null=True, blank=True)
+    city = models.ForeignKey(CityMaster, on_delete=models.SET_NULL, null=True, blank=True)
+    state = models.ForeignKey(StateMaster, on_delete=models.SET_NULL, null=True, blank=True)
+    country = models.ForeignKey(CountryMaster, on_delete=models.SET_NULL, null=True, blank=True)
     pincode = models.CharField(max_length=10, blank=True, null=True)
     wallet_balance = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, help_text='Current wallet balance')
     balance_type = models.IntegerField(choices=BALANCE_TYPE_CHOICES, null=True, blank=True, help_text='1: Debit (Receivable), 2: Credit (Payable/Advance)')

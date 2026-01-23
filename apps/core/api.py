@@ -1,9 +1,9 @@
 from ninja import Router
-from cities_light.models import Country, Region, City
+from .models import CountryMaster, StateMaster, CityMaster
 from .schema import (
-    CountryListResponseSchema,
-    RegionListResponseSchema,
-    CityListResponseSchema,
+    CountryMasterListResponseSchema,
+    StateMasterListResponseSchema,
+    CityMasterListResponseSchema,
     ErrorResponseSchema
 )
 from apps.core.helpers import ResponseBuilder
@@ -11,15 +11,16 @@ from apps.core.helpers import ResponseBuilder
 location_router = Router(tags=['Location'])
 
 
-@location_router.get('/countries', response={200: CountryListResponseSchema, 400: ErrorResponseSchema})
+@location_router.get('/countries', response={200: CountryMasterListResponseSchema, 400: ErrorResponseSchema})
 def get_countries(request):
     """Get all countries"""
     try:
-        countries = Country.objects.all().values('id', 'name')
+        countries = CountryMaster.objects.all().values('id', 'name', 'country_code')
         countries_data = [
             {
                 'id': country['id'],
-                'name': country['name']
+                'name': country['name'],
+                'country_code': country['country_code']
             }
             for country in countries
         ]
@@ -28,32 +29,34 @@ def get_countries(request):
         return 400, ResponseBuilder.error(f'Failed to get countries: {str(e)}')
 
 
-@location_router.get('/countries/{country_id}/regions', response={200: RegionListResponseSchema, 400: ErrorResponseSchema})
-def get_regions(request, country_id: str):
-    """Get all regions/states for a country"""
+@location_router.get('/countries/{country_id}/states', response={200: StateMasterListResponseSchema, 400: ErrorResponseSchema})
+def get_states(request, country_id: str):
+    """Get all states for a country"""
     try:
-        regions = Region.objects.filter(country_id=country_id).values('id', 'name')
-        regions_data = [
+        states = StateMaster.objects.filter(country_id=country_id).values('id', 'name', 'country_id')
+        states_data = [
             {
-                'id': region['id'],
-                'name': region['name'],
+                'id': state['id'],
+                'name': state['name'],
+                'country_id': state['country_id']
             }
-            for region in regions
+            for state in states
         ]
-        return 200, ResponseBuilder.success('Regions retrieved successfully', regions_data)
+        return 200, ResponseBuilder.success('States retrieved successfully', states_data)
     except Exception as e:
-        return 400, ResponseBuilder.error(f'Failed to get regions: {str(e)}')
+        return 400, ResponseBuilder.error(f'Failed to get states: {str(e)}')
 
 
-@location_router.get('/regions/{region_id}/cities', response={200: CityListResponseSchema, 400: ErrorResponseSchema})
-def get_cities(request, region_id: str):
-    """Get all cities for a region/state"""
+@location_router.get('/states/{state_id}/cities', response={200: CityMasterListResponseSchema, 400: ErrorResponseSchema})
+def get_cities(request, state_id: str):
+    """Get all cities for a state"""
     try:
-        cities = City.objects.filter(region_id=region_id).values('id', 'name')
+        cities = CityMaster.objects.filter(state_id=state_id).values('id', 'name', 'state_id')
         cities_data = [
             {
                 'id': city['id'],
                 'name': city['name'],
+                'state_id': city['state_id']
             }
             for city in cities
         ]

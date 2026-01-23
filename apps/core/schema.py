@@ -8,31 +8,43 @@ class BaseResponseSchema(Schema):
     message: str
 
 
-class CountryDataSchema(Schema):
+class CountryMasterDataSchema(Schema):
     id: int
     name: str
+    country_code: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
 
 
-class CountryListResponseSchema(BaseResponseSchema):
-    data: List[CountryDataSchema]
+class CountryMasterListResponseSchema(BaseResponseSchema):
+    data: List[CountryMasterDataSchema]
 
 
-class RegionDataSchema(Schema):
+class StateMasterDataSchema(Schema):
     id: int
     name: str
+    country_id: int
+    country: Optional[CountryMasterDataSchema] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
 
 
-class RegionListResponseSchema(BaseResponseSchema):
-    data: List[RegionDataSchema]
+class StateMasterListResponseSchema(BaseResponseSchema):
+    data: List[StateMasterDataSchema]
 
 
-class CityDataSchema(Schema):
+class CityMasterDataSchema(Schema):
     id: int
     name: str
+    state_id: int
+    state: Optional[StateMasterDataSchema] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
 
 
-class CityListResponseSchema(BaseResponseSchema):
-    data: List[CityDataSchema]
+class CityMasterListResponseSchema(BaseResponseSchema):
+    data: List[CityMasterDataSchema]
+
 
 class ErrorDataSchema(Schema):
     details: Optional[str] = None

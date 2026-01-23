@@ -10,7 +10,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('cities_light', '0012_city_translations_country_translations_and_more'),
+        ('core', '0001_initial'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
@@ -36,10 +36,10 @@ class Migration(migrations.Migration):
                 ('website_url', models.URLField(blank=True, null=True)),
                 ('default_shop', models.IntegerField(default=0, help_text='0:No, 1:Yes')),
                 ('status', models.IntegerField(default=0, help_text='0: Active, 1: Inactive, 2: Deleted')),
-                ('city', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='shops', to='cities_light.city')),
-                ('country', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='shops', to='cities_light.country')),
+                ('city', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='shops', to='core.citymaster')),
+                ('country', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='shops', to='core.countrymaster')),
                 ('owner', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='owned_shops', to=settings.AUTH_USER_MODEL)),
-                ('state', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='shops', to='cities_light.region')),
+                ('state', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='shops', to='core.statemaster')),
             ],
             options={
                 'verbose_name': 'Shop',

@@ -1,7 +1,6 @@
 from django.db import models
 from apps.accounts.models import User
-from apps.core.models import TimestampedModel, IntegerModel
-from cities_light.models import Country, Region, City
+from apps.core.models import TimestampedModel, IntegerModel, CountryMaster, StateMaster, CityMaster
 
 # Create your models here.
 class Shop(IntegerModel, TimestampedModel):
@@ -16,9 +15,9 @@ class Shop(IntegerModel, TimestampedModel):
     pan_no = models.CharField(max_length=15, blank=True, null=True)
     address = models.TextField(blank=True, null=True)
     pincode = models.CharField(max_length=10, blank=True, null=True)
-    city = models.ForeignKey(City, on_delete=models.SET_NULL, null=True, blank=True, related_name='shops')
-    state = models.ForeignKey(Region, on_delete=models.SET_NULL, null=True, blank=True, related_name='shops')
-    country = models.ForeignKey(Country, on_delete=models.SET_NULL, null=True, blank=True, related_name='shops')
+    city = models.ForeignKey(CityMaster, on_delete=models.SET_NULL, null=True, blank=True, related_name='shops')
+    state = models.ForeignKey(StateMaster, on_delete=models.SET_NULL, null=True, blank=True, related_name='shops')
+    country = models.ForeignKey(CountryMaster, on_delete=models.SET_NULL, null=True, blank=True, related_name='shops')
     logo_image = models.ImageField(upload_to='shop_logos', blank=True, null=True)
     website_url = models.URLField(blank=True, null=True)
     default_shop = models.IntegerField(default=0, help_text='0:No, 1:Yes')
