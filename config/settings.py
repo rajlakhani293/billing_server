@@ -58,7 +58,8 @@ INSTALLED_APPS = [
     'apps.shops',
     'apps.parties',
     'apps.core',
-
+    'apps.sales',
+    'apps.items',
 ]
 
 MIDDLEWARE = [

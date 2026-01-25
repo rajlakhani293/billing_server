@@ -36,7 +36,15 @@ class CommonQuery:
         else:
             raise ValueError("Invalid where clause provided")
         
-        # --- 2. Apply Status Filter ---
+        # --- 2. Apply Shop Filter from JWT ---
+        if request and hasattr(request, 'shop_id') and request.shop_id:
+            where_q &= Q(shop_id=request.shop_id)
+        
+        # --- 3. Apply User Filter from JWT ---
+        if request and hasattr(request, 'user_id') and request.user_id:
+            where_q &= Q(user_id=request.user_id)
+        
+        # --- 3. Apply Status Filter ---
         if 'status' not in str(where_q):
             where_q &= ~Q(status=2)
                 
@@ -120,8 +128,39 @@ class CommonQuery:
     def createRecord(model, data, request=None, transaction=None):
         enriched = data.copy()
         
-        with transaction.atomic() if not transaction else transaction.mark_for_rollback_at_column_break():
-            result = model.objects.create(**enriched)
+        # Add shop_id from JWT token if model has shop_id field
+        if request and hasattr(request, 'shop_id') and request.shop_id:
+            # Check if model has shop_id field
+            if hasattr(model, '_meta') and any(field.name == 'shop_id' for field in model._meta.fields):
+                # For ForeignKey fields, we need to assign the actual Shop instance
+                shop_field = next((f for f in model._meta.fields if f.name == 'shop_id'), None)
+                if shop_field and shop_field.is_relation:
+                    # Import Shop model dynamically to avoid circular imports
+                    from apps.shops.models import Shop
+                    try:
+                        shop_instance = Shop.objects.get(id=request.shop_id)
+                        enriched['shop_id'] = shop_instance
+                    except Shop.DoesNotExist:
+                        pass  # If shop doesn't exist, don't set it
+                else:
+                    # If it's not a ForeignKey, set as integer
+                    enriched['shop_id'] = request.shop_id
+        
+        # Add user_id from JWT token if model has user_id field
+        if request and hasattr(request, 'user_id') and request.user_id:
+            # Check if model has user_id field
+            if hasattr(model, '_meta') and any(field.name == 'user_id' for field in model._meta.fields):
+                enriched['user_id'] = request.user_id
+        
+        if transaction:
+            # Use provided transaction
+            with transaction:
+                result = model.objects.create(**enriched)
+        else:
+            # Create new transaction
+            from django.db import transaction as db_transaction
+            with db_transaction.atomic():
+                result = model.objects.create(**enriched)
         
         return result
 
@@ -134,7 +173,7 @@ class CommonQuery:
             return None
                 
         # Update the record
-        count = model.objects.filter(where_q).update(**safe_data)
+        count = model.objects.filter(where_q).update(**data)
         if count == 0: 
             return None
         
