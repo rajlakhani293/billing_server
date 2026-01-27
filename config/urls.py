@@ -8,6 +8,7 @@ from apps.accounts.api import auth_router
 from apps.core.api import location_router
 from apps.core.helpers import validation_error_handler
 from apps.parties.api import parties_router
+from apps.items.api import items_router
 
 # Initialize Ninja API
 api = NinjaAPI(
@@ -22,6 +23,7 @@ api.add_exception_handler(ValidationError, validation_error_handler)
 api.add_router('/auth', auth_router)
 api.add_router('/parties', parties_router)
 api.add_router('/locations', location_router)
+api.add_router('/items', items_router)
 
 urlpatterns = [
     path('admin/', admin.site.urls),

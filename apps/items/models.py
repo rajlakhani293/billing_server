@@ -6,21 +6,10 @@ from apps.shops.models import Shop
 
 class Item(IntegerModel, TimestampedModel):
 
-    ITEM_STATUS_CHOICES = [
-        (0, 'Active'),
-        (1, 'Inactive'),
-        (2, 'Discontinued'),
-    ]
-
     PRIMARY_UNIT_CHOICES = [
         (1, 'Pcs'),
         (2, 'Kg'),
         (3, 'Ltr')
-    ]
-    
-    TAX_TYPE_CHOICES = [
-        (1, 'Inclusive'),
-        (2, 'Exclusive'),
     ]
     
     # Basic Information
@@ -48,14 +37,13 @@ class Item(IntegerModel, TimestampedModel):
     # Units and Measurements
     primary_unit = models.IntegerField(choices=PRIMARY_UNIT_CHOICES, default=1, help_text='Primary unit of measurement')
     item_weight = models.DecimalField(max_digits=10, decimal_places=3, blank=True, null=True, help_text='Weight per unit')
-    item_volume = models.DecimalField(max_digits=10, decimal_places=3, blank=True, null=True, help_text='Volume per unit')
     
     # Additional Details
     brand = models.CharField(max_length=100, blank=True, null=True, help_text='Brand name')
     barcode = models.CharField(max_length=50, blank=True, null=True, help_text='Barcode')
     
     # Status and Shop
-    status = models.IntegerField(choices=ITEM_STATUS_CHOICES, default=0, help_text='Item status')
+    status = models.IntegerField(default=0, help_text='0: Active, 1: Inactive, 2: Deleted')
     shop = models.ForeignKey(Shop, on_delete=models.CASCADE, related_name='items', help_text='Associated shop')
     
     class Meta:

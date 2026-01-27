@@ -36,16 +36,16 @@ def dropdownList(request):
 
 # # Get Party by ID
 # @parties_router.get('/{party_id}')
-# def getById(request, party_id: str):
+# def getById(request, party_id: int):
 #     return PartyService.getById(party_id, request)
 
-# Update Party
-@parties_router.put('/{party_id}')
-def update(request, party_id: str, payload: PartyUpdateSchema):
-    return PartyService.update(payload.dict(), request, party_id)
+# # Update Party
+# @parties_router.put('/{party_id}')
+# def update(request, party_id: int, payload: PartyUpdateSchema):
+#     return PartyService.update(payload.dict(), request, party_id)
 
 # # Delete Party (soft delete)
 # @parties_router.delete('/{party_id}')
-# def delete(request, party_id: str):
+# def delete(request, party_id: int):
 #     return PartyService.delete(party_id, request)
 

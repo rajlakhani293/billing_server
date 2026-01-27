@@ -50,9 +50,6 @@ class PartyService:
     def update(data, request, party_id):
         try:
             with transaction.atomic():
-                # Add exclude_id for unique checks during update
-                data['exclude_id'] = party_id
-                
                 # Define required fields with display names
                 required_fields = {
                     'name': 'Party Name',
@@ -60,10 +57,11 @@ class PartyService:
                     'customer_category': 'Customer Category'
                 }
                 
-                # Define unique checks
+                # Define unique checks with exclude_id for update
                 unique_checks = {
                     'model': Party,
-                    'fields': ['phone_number', 'email']
+                    'fields': ['phone_number', 'email'],
+                    'exclude_id': party_id
                 }
                 
                 # Validate request
@@ -72,12 +70,8 @@ class PartyService:
                     # Transaction automatically rolls back when exception is raised
                     raise Exception(f"Validation failed: {errors}")
                 
-                # Remove exclude_id before updating
-                update_data = data.copy()
-                del update_data['exclude_id']
-                
                 # Update party using CommonQuery within transaction
-                party = CommonQuery.updateRecordById(Party, party_id, update_data, request)
+                party = CommonQuery.updateRecordById(Party, party_id, data, request)
                 
                 if not party:
                     raise Exception("Party not found")

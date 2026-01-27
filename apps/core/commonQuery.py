@@ -1,24 +1,7 @@
 from django.db.models import Q, Sum, Min, Max, F
-import os
 
 class CommonQuery:  
-    DEBUG_SQL = os.getenv('DEBUG_SQL', 'false').lower() == 'true'
     
-    @staticmethod
-    def debug_sql(sql, params=None):
-        """Debug SQL logging"""
-        if CommonQuery.DEBUG_SQL:
-            if params:
-                print(f"\033[36m[SQL]\033[0m {sql % tuple(params)}")
-            else:
-                print(f"\033[36m[SQL]\033[0m {sql}")
-    
-
-    @staticmethod
-    def getClientIp(request):
-        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-        return x_forwarded_for.split(',')[0] if x_forwarded_for else request.META.get('REMOTE_ADDR')
-
     @staticmethod
     def buildWhere(whereInput, request=None):
         """Builds Django Q objects with status and tenant filters"""
@@ -32,7 +15,7 @@ class CommonQuery:
         elif isinstance(whereInput, dict):
             where_q &= Q(**whereInput)
         elif whereInput is None:
-            pass  # Empty where clause
+            pass
         else:
             raise ValueError("Invalid where clause provided")
         
@@ -51,72 +34,77 @@ class CommonQuery:
         return where_q
 
     @staticmethod
-    def serializeModelInstance(instance, custom_related_fields=None):
+    def serializeModelInstance(instance, includes=None, attributes=None, custom_related_fields=None):
+        """
+        Serializes a model instance with support for:
+        1. Attribute filtering (attributes=[...])
+        2. Nested includes (includes={...})
+        3. Default ID-only for relations not in includes
+        """
         if not instance: return None
+        
+        # Backward compatibility: map custom_related_fields to includes
+        if custom_related_fields and not includes:
+            includes = custom_related_fields
+        
+        includes = includes or {}
         data = {}
         
-        # Serialize regular fields
-        for field in instance._meta.fields:
+        # Determine fields to serialize
+        fields_to_serialize = instance._meta.fields
+        if attributes:
+            fields_to_serialize = [f for f in instance._meta.fields if f.name in attributes]
+            
+        for field in fields_to_serialize:
             try:
-                val = getattr(instance, field.name)
-                if hasattr(val, 'url'):  # Handle ImageFieldFile and FileField
-                    try:
-                        data[field.name] = val.url if val and hasattr(val, 'url') else None
-                    except (ValueError, AttributeError):
-                        # Handle case where file has no associated file or other file-related errors
-                        data[field.name] = None
-                elif hasattr(val, 'isoformat'):  # Handle datetime objects
-                    data[field.name] = val.isoformat()
+                # Handle Relations (Foreign Keys)
+                if field.is_relation and field.many_to_one:
+                    # Check if included
+                    if field.name in includes:
+                        related_obj = getattr(instance, field.name)
+                        include_config = includes[field.name]
+                        
+                        # Determine nested attributes and includes
+                        nested_attributes = None
+                        nested_includes = None
+                        
+                        if isinstance(include_config, list):
+                            # usage: 'shop': ['id', 'name'] -> attributes only
+                            nested_attributes = include_config
+                        elif isinstance(include_config, dict):
+                            # usage: 'shop': {'attributes': [...], 'includes': {...}}
+                            nested_attributes = include_config.get('attributes')
+                            nested_includes = include_config.get('includes')
+                        
+                        data[field.name] = CommonQuery.serializeModelInstance(
+                            related_obj, 
+                            includes=nested_includes, 
+                            attributes=nested_attributes
+                        )
+                    else:
+                        # DEFAULT: Return ID only (e.g. shop_id)
+                        # field.attname gives the confusing 'shop_id' usually, but field.name is 'shop'.
+                        # If we want the actual ID value, we used getattr(instance, field.attname) usually?
+                        # Or simply getattr(instance, field.name).id if it exists, but that triggers query if not fetched.
+                        # best is getattr(instance, field.attname) which is the underlying ID column.
+                        val = getattr(instance, field.attname)
+                        data[field.name] = val
+                
+                # Handle Normal Fields
                 else:
-                    data[field.name] = val
+                    val = getattr(instance, field.name)
+                    if hasattr(val, 'url'):
+                        try:
+                            data[field.name] = val.url if val and hasattr(val, 'url') else None
+                        except (ValueError, AttributeError):
+                            data[field.name] = None
+                    elif hasattr(val, 'isoformat'):
+                        data[field.name] = val.isoformat()
+                    else:
+                        data[field.name] = val
+                        
             except Exception:
-                # Handle any other field access errors gracefully
                 data[field.name] = None
-        
-        # Handle foreign key fields (from select_related)
-        for field in instance._meta.fields:
-            if field.is_relation and field.many_to_one:
-                try:
-                    related_obj = getattr(instance, field.name)
-                    if related_obj:
-                        # Check if custom serialization is defined for this field
-                        if custom_related_fields and field.name in custom_related_fields:
-                            custom_fields = custom_related_fields[field.name]
-                            related_data = {}
-                            for custom_field in custom_fields:
-                                try:
-                                    val = getattr(related_obj, custom_field)
-                                    if hasattr(val, 'isoformat'):  # Handle datetime objects
-                                        related_data[custom_field] = val.isoformat()
-                                    else:
-                                        related_data[custom_field] = val
-                                except Exception:
-                                    related_data[custom_field] = None
-                            data[field.name] = related_data
-                        else:
-                            # Default serialization - only basic fields for related objects
-                            related_data = {}
-                            for related_field in related_obj._meta.fields:
-                                if not related_field.is_relation:  # Only serialize non-relational fields
-                                    try:
-                                        val = getattr(related_obj, related_field.name)
-                                        if hasattr(val, 'url'):  # Handle ImageFieldFile and FileField in related objects
-                                            try:
-                                                related_data[related_field.name] = val.url if val and hasattr(val, 'url') else None
-                                            except (ValueError, AttributeError):
-                                                # Handle case where file has no associated file
-                                                related_data[related_field.name] = None
-                                        elif hasattr(val, 'isoformat'):  # Handle datetime objects
-                                            related_data[related_field.name] = val.isoformat()
-                                        else:
-                                            related_data[related_field.name] = val
-                                    except Exception:
-                                        # Handle any field access errors gracefully
-                                        related_data[related_field.name] = None
-                            data[field.name] = related_data
-                except Exception:
-                    # Handle any relation access errors gracefully
-                    data[field.name] = None
         
         return data
 
@@ -128,36 +116,31 @@ class CommonQuery:
     def createRecord(model, data, request=None, transaction=None):
         enriched = data.copy()
         
-        # Add shop_id from JWT token if model has shop_id field
         if request and hasattr(request, 'shop_id') and request.shop_id:
-            # Check if model has shop_id field
             if hasattr(model, '_meta') and any(field.name == 'shop_id' for field in model._meta.fields):
-                # For ForeignKey fields, we need to assign the actual Shop instance
                 shop_field = next((f for f in model._meta.fields if f.name == 'shop_id'), None)
                 if shop_field and shop_field.is_relation:
-                    # Import Shop model dynamically to avoid circular imports
                     from apps.shops.models import Shop
                     try:
                         shop_instance = Shop.objects.get(id=request.shop_id)
                         enriched['shop_id'] = shop_instance
                     except Shop.DoesNotExist:
-                        pass  # If shop doesn't exist, don't set it
+                        pass
                 else:
-                    # If it's not a ForeignKey, set as integer
                     enriched['shop_id'] = request.shop_id
         
-        # Add user_id from JWT token if model has user_id field
         if request and hasattr(request, 'user_id') and request.user_id:
-            # Check if model has user_id field
             if hasattr(model, '_meta') and any(field.name == 'user_id' for field in model._meta.fields):
                 enriched['user_id'] = request.user_id
         
+        if hasattr(model, '_meta'):
+            valid_fields = {f.name for f in model._meta.fields}
+            enriched = {k: v for k, v in enriched.items() if k in valid_fields}
+        
         if transaction:
-            # Use provided transaction
             with transaction:
                 result = model.objects.create(**enriched)
         else:
-            # Create new transaction
             from django.db import transaction as db_transaction
             with db_transaction.atomic():
                 result = model.objects.create(**enriched)
@@ -172,6 +155,11 @@ class CommonQuery:
         if not old_record: 
             return None
                 
+        # Filter data to include only valid model fields
+        if hasattr(model, '_meta'):
+            valid_fields = {f.name for f in model._meta.fields}
+            data = {k: v for k, v in data.items() if k in valid_fields}
+
         # Update the record
         count = model.objects.filter(where_q).update(**data)
         if count == 0: 
@@ -228,8 +216,10 @@ class CommonQuery:
         
         # Auto-serialize if it's a model instance
         if result and hasattr(result, '_meta'):
-            custom_related_fields = options.get('custom_related_fields')
-            return CommonQuery.serializeModelInstance(result, custom_related_fields)
+            # custom_related_fields is legacy/alias for includes
+            includes = options.get('includes') or options.get('custom_related_fields')
+            attributes = options.get('attributes')
+            return CommonQuery.serializeModelInstance(result, includes=includes, attributes=attributes)
         
         return result
 
@@ -300,6 +290,7 @@ class CommonQuery:
     @staticmethod
     def fetchPaginatedData(model, reqBody, fieldConfig, options={}, request=None, dateField="created_at", custom_related_fields=None):
         try:
+            reqBody = reqBody or {}
             page = max(int(reqBody.get('page', 1)), 1)
             limit_val = reqBody.get('limit', 10)
             is_all = str(limit_val).lower() == 'all'
@@ -336,10 +327,26 @@ class CommonQuery:
             # Keep original queryset for totals calculation
             original_items = list(qs)
             
-            # Serialize items for response with custom related fields
-            data = [CommonQuery.serializeModelInstance(item, custom_related_fields) for item in original_items]
+            # Extract dynamic fields (prioritize options if set to act as server-side override, or accept from payload)
+            # User wants server-side configuration to be possible.
+            attributes = options.get('attributes') or reqBody.get('attributes')
             
-            # Calculate totals using original items
+            # Extract custom_related_fields
+            # Prioritize payload if desired, OR options. The user wants to "set here" (in code), 
+            # so options should probably be processed.
+            # Let's support both, merging might be complex, so let's check options first (server override) or reqBody.
+            dict_config = options.get('includes') or options.get('custom_related_fields') or options.get('related_fields')
+            dynamic_related = reqBody.get('custom_related_fields') or reqBody.get('includes') or reqBody.get('related_fields')
+            
+            final_related = dict_config if dict_config else dynamic_related
+            if final_related:
+                custom_related_fields = final_related
+
+            # Serialize items for response with custom related fields
+            data = [CommonQuery.serializeModelInstance(item, includes=custom_related_fields, attributes=attributes) for item in original_items]
+            
+            # Calculate totals using original items (ensure fields exist since attributes might hide them)
+            # Actually, totals are calculated on original_items which are Model instances, so attributes filtering doesn't affect calculation.
             totals = {f: sum(getattr(i, f, 0) or 0 for i in original_items) for f in (options.get('sumField', []) if isinstance(options.get('sumField'), list) else [options.get('sumField')] if options.get('sumField') else [])}
 
             return {'items': data, 'total': total, 'totals': totals, 'currentPage': page, 'totalPages': 1 if is_all else (total + limit - 1) // limit}

@@ -11,9 +11,6 @@ class BaseResponseSchema(Schema):
 class CountryMasterDataSchema(Schema):
     id: int
     name: str
-    country_code: Optional[str] = None
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
 
 
 class CountryMasterListResponseSchema(BaseResponseSchema):
@@ -23,11 +20,6 @@ class CountryMasterListResponseSchema(BaseResponseSchema):
 class StateMasterDataSchema(Schema):
     id: int
     name: str
-    country_id: int
-    country: Optional[CountryMasterDataSchema] = None
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
-
 
 class StateMasterListResponseSchema(BaseResponseSchema):
     data: List[StateMasterDataSchema]
@@ -36,11 +28,6 @@ class StateMasterListResponseSchema(BaseResponseSchema):
 class CityMasterDataSchema(Schema):
     id: int
     name: str
-    state_id: int
-    state: Optional[StateMasterDataSchema] = None
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
-
 
 class CityMasterListResponseSchema(BaseResponseSchema):
     data: List[CityMasterDataSchema]
@@ -54,3 +41,12 @@ class ErrorDataSchema(Schema):
 class ErrorResponseSchema(BaseResponseSchema):
     success: bool = False
     data: Optional[ErrorDataSchema] = None
+
+
+class DeleteSchema(Schema):
+    ids: List[int]
+
+class UpdateStatusSchema(Schema):
+    ids: List[int]
+    status: int
+

@@ -119,6 +119,7 @@ def validate_request(data, required_fields, unique_checks=None, request=None):
     if unique_checks:
         model = unique_checks.get('model')
         unique_fields = unique_checks.get('fields', [])
+        exclude_id = unique_checks.get('exclude_id') 
         
         for field in unique_fields:
             if field in data and data[field]:
@@ -136,7 +137,6 @@ def validate_request(data, required_fields, unique_checks=None, request=None):
                         filter_kwargs['shop_id'] = shop_id
                 
                 # Exclude current record for updates
-                exclude_id = data.get('exclude_id')
                 if exclude_id:
                     existing = model.objects.filter(**filter_kwargs).exclude(id=exclude_id).first()
                 else:
