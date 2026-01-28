@@ -15,5 +15,3 @@ class ItemDropdownSchema(Schema):
 class ItemStatusUpdateSchema(Schema):
     id: int
     status: int
-
-

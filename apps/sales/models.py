@@ -72,12 +72,15 @@ class SalesTransaction(IntegerModel, TimestampedModel):
     # Quantity and pricing
     item_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=1.00, help_text='Quantity sold')
     item_rate = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text='Price per unit at time of sale')
+    item_description = models.CharField(max_length=255, help_text='Item Description')
     discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0.00, help_text='Discount percentage')
     discount_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text='Discount amount for this item')
     
     # Tax and discount
     tax_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text='Tax amount for this item')
-    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text='Total amount for this item')    
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text='Total amount for this item') 
+    status = models.IntegerField(default=0, help_text='0: Active, 1: Inactive, 2: Deleted')
+   
     class Meta:
         db_table = 'sales_transactions'
         verbose_name = 'Sales Transaction'
@@ -88,7 +91,7 @@ class SalesTransaction(IntegerModel, TimestampedModel):
         ]
     
     def __str__(self):
-        return f"{self.item.item_name} - Sales {self.sales.sales_code}"
+        return f"{self.item.item_name} - Sales {self.sales.sales_code} - {self.item_description}"
     
     def clean(self):
         if self.item_quantity <= 0:

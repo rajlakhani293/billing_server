@@ -1,5 +1,5 @@
 from django.db import transaction
-from apps.core.helpers import ResponseBuilder, validate_request
+from apps.core.helpers import ResponseBuilder, validate_request, generate_sequential_code
 from .models import Item
 from apps.core.commonQuery import CommonQuery
 
@@ -9,28 +9,25 @@ class ItemService:
     def create(data, request):
         try:
             with transaction.atomic():
-                # Define required fields with display names
+
                 required_fields = {
-                    'item_code': 'Item Code',
                     'item_name': 'Item Name',
                     'primary_unit': 'Primary Unit',
                 }
                 
-                # Define unique checks
                 unique_checks = {
                     'model': Item,
-                    'fields': ['item_code']
+                    'fields': ['item_name']
                 }
                 
-                # Validate request
                 errors = validate_request(data, required_fields, unique_checks, request)
                 if errors:
                     raise Exception(f"Validation failed: {errors}")
                 
-                # Create item using CommonQuery within transaction
+                data['item_code'] = generate_sequential_code(Item, 'item_code', 'IT')
+                
                 item = CommonQuery.createRecord(Item, data, request)
                 
-                # Serialize item object
                 serialized_item = CommonQuery.serializeModelInstance(item)
                 
                 return ResponseBuilder.success(
@@ -48,32 +45,26 @@ class ItemService:
     def update(data, request, item_id):
         try:
             with transaction.atomic():    
-                # Define required fields with display names
                 required_fields = {
-                    'item_code': 'Item Code',
                     'item_name': 'Item Name',
                     'primary_unit': 'Primary Unit',
                 }
                 
-                # Define unique checks
                 unique_checks = {
                     'model': Item,
-                    'fields': ['item_code'],
+                    'fields': ['item_name'],
                     'exclude_id': item_id
                 }
                 
-                # Validate request
                 errors = validate_request(data, required_fields, unique_checks, request)
                 if errors:
                     raise Exception(f"Validation failed: {errors}")
                 
-                # Update item using CommonQuery within transaction
                 item = CommonQuery.updateRecordById(Item, item_id, data, request)
                 
                 if not item:
                     raise Exception("Item not found")
                 
-                # Serialize item object
                 serialized_item = CommonQuery.serializeModelInstance(item)
                 
                 return ResponseBuilder.success(

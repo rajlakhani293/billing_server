@@ -6,6 +6,7 @@ from django.utils import timezone
 import pyotp
 from ninja.errors import ValidationError, HttpError
 from django.http import JsonResponse
+import datetime
 
 
 def check_recent_verification(phone_number: str) -> dict:
@@ -186,3 +187,25 @@ def generate_otp(phone_number: str, validity_minutes: int = 5, otp_type: str = '
         otp_code=otp_code,
         otp_type=otp_type
     )
+
+def generate_sequential_code(model, field_name='sales_code', prefix='SL'):
+    # Format: PREFIX-YYYYMMDD-N (Sequential number)
+    date_str = datetime.datetime.now().strftime('%Y%m%d')
+    prefix_full = f"{prefix}-{date_str}-"
+    
+    # Find the last entry with this prefix
+    filter_kwargs = {f"{field_name}__startswith": prefix_full}
+    last_entry = model.objects.filter(**filter_kwargs).order_by('-id').first()
+    
+    if last_entry:
+        # Extract the last number
+        try:
+            code_value = getattr(last_entry, field_name)
+            last_number = int(code_value.split('-')[-1])
+            new_number = last_number + 1
+        except ValueError:
+            new_number = 1
+    else:
+        new_number = 1
+        
+    return f"{prefix_full}{new_number}"

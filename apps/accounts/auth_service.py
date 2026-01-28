@@ -484,16 +484,16 @@ class ShopService:
         
         user = User.objects.create(
             phone_number=phone_number,
-            user_name=data["shop_name"],
-            email=email,  # Will be None if email was null or empty string
+            user_name="Super User",
+            email=email, 
             country_id=data.get("country"),
             state_id=data.get("state"),
             city_id=data.get("city"),
             address=data.get("address"),
             pincode=data.get("pincode"),
             is_verified=True,
-            is_superuser=False,  # Shop owners are NOT superusers
-            is_staff=True       # But they can access admin for their shop
+            is_superuser=False, 
+            is_staff=True       
         )
 
         if data.get("password"):
