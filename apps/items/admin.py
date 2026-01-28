@@ -5,7 +5,7 @@ from .models import Item
 
 @admin.register(Item)
 class ItemAdmin(ModelAdmin):
-    list_display = ["id", 'item_code', 'item_name', 'primary_unit', 'selling_rate', 'purchase_rate', 'current_stock', 'status', 'shop']
+    list_display = ["id", 'item_code', 'item_name', 'primary_unit', 'current_stock', 'status', 'shop']
     list_filter = ['primary_unit', 'status', 'shop', 'brand']
     search_fields = ['item_code', 'item_name', 'brand', 'barcode']
     list_editable = ['status']
@@ -16,7 +16,7 @@ class ItemAdmin(ModelAdmin):
             'fields': ('item_code', 'item_name', 'item_image', 'description', 'shop')
         }),
         ('Pricing Information', {
-            'fields': ('purchase_rate', 'selling_rate')
+            'fields': ('purchase_price', 'selling_price')
         }),
         ('Tax Information', {
             'fields': ('tax_rate', 'hsn_code')
@@ -25,7 +25,7 @@ class ItemAdmin(ModelAdmin):
             'fields': ('opening_stock', 'current_stock', 'min_stock_level', 'max_stock_level')
         }),
         ('Units and Measurements', {
-            'fields': ('primary_unit', 'item_weight', 'item_volume')
+            'fields': ('primary_unit', 'item_weight')
         }),
         ('Additional Details', {
             'fields': ('brand', 'barcode')

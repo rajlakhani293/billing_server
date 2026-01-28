@@ -21,8 +21,6 @@ class Item(IntegerModel, TimestampedModel):
     # Pricing
     purchase_price = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text='Purchase price')
     selling_price = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text='Selling price')
-    purchase_rate = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text='Purchase rate including tax')
-    selling_rate = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text='Selling rate including tax')
     
     # Tax Information
     tax_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0.00, help_text='Tax rate')
