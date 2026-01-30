@@ -30,7 +30,7 @@ class SalesCreateSchema(Schema):
     paid_amount: Decimal
     
     # Nested transactions
-    transactions: List[SalesTransactionCreateSchema]
+    sales_transactions: List[SalesTransactionCreateSchema]
 
 
 class SalesFilterSchema(Schema):

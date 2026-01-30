@@ -47,7 +47,8 @@ class Sales(IntegerModel, TimestampedModel):
         ]
     
     def __str__(self):
-        return f"Sales {self.sales_code} - {self.party.name}"
+        party_name = self.party.name if self.party else "N/A"
+        return f"Sales {self.sales_code} - {party_name}"
     
     def clean(self):
         if self.paid_amount > self.total_amount:

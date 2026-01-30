@@ -20,7 +20,7 @@ class Migration(migrations.Migration):
                 ('created_at', models.DateTimeField(auto_now_add=True, null=True)),
                 ('updated_at', models.DateTimeField(auto_now=True, null=True)),
                 ('item_code', models.CharField(help_text='Unique item code/SKU', max_length=50, unique=True)),
-                ('item_image', models.ImageField(blank=True, help_text='Item image', null=True, upload_to='item_images')),
+                ('item_image', models.ImageField(blank=True, help_text='Item image', null=True, upload_to='item_image')),
                 ('item_name', models.CharField(help_text='Item name', max_length=255)),
                 ('description', models.TextField(blank=True, help_text='Item description', null=True)),
                 ('purchase_price', models.DecimalField(decimal_places=2, default=0.0, help_text='Purchase price', max_digits=12)),

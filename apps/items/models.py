@@ -14,7 +14,7 @@ class Item(IntegerModel, TimestampedModel):
     
     # Basic Information
     item_code = models.CharField(max_length=50, unique=True, help_text='Unique item code/SKU')
-    item_image = models.ImageField(upload_to='item_images', blank=True, null=True, help_text='Item image')
+    item_image = models.ImageField(upload_to='item_image', blank=True, null=True, help_text='Item image')
     item_name = models.CharField(max_length=255, help_text='Item name')
     description = models.TextField(blank=True, null=True, help_text='Item description')
     

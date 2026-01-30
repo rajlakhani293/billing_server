@@ -1,17 +1,21 @@
-from ninja import Router
+from ninja import Router, File, UploadedFile, Form
 from apps.core.auth import AuthBearer
 from .service import ItemService
 from apps.core.schema import DeleteSchema, UpdateStatusSchema
-items_router = Router(tags=['Items'], auth=AuthBearer())
+from .schema import ItemCreateSchema
 
 # ================================================================= ================================================================= =================================================================
 # Items CRUD APIs
 # ================================================================= ================================================================= =================================================================
+items_router = Router(tags=['Items'], auth=AuthBearer())
 
 # Create Item
 @items_router.post('/')
-def create(request, payload: dict):
-    return ItemService.create(payload, request)
+def create(request, payload: ItemCreateSchema = Form(...), item_image: UploadedFile = File(None)):
+    data = payload.dict()
+    if item_image:
+        data['item_image'] = item_image
+    return ItemService.create(data, request)
 
 # Delete Items (soft delete)
 @items_router.delete('/delete')

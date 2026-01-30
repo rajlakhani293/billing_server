@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.conf import settings
 from apps.core.helpers import ResponseBuilder, validate_request, generate_sequential_code
 from .models import Item
 from apps.core.commonQuery import CommonQuery
@@ -193,9 +194,16 @@ class ItemService:
             items = CommonQuery.findAllRecords(
                 Item, 
                 {'status': 0},
-                {'attributes': ['id', 'item_name', 'item_code', 'current_stock', 'selling_price'], 'order': ['item_name']},
+                {'attributes': ['id', 'item_name', 'item_code', 'current_stock', 'selling_price', 'item_image'], 'order': ['item_name']},
                 request
             )
+            
+            # Post-process to add full image URL
+            for item in items:
+                if item.get('item_image'):
+                    item['item_image'] = request.build_absolute_uri(settings.MEDIA_URL + str(item['item_image']))
+                else:
+                    item['item_image'] = None
             
             return ResponseBuilder.success(
                 data=items,

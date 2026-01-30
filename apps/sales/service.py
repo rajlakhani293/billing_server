@@ -13,13 +13,10 @@ class SalesService:
         try:
             with transaction.atomic():
                 # Extract transactions
-                transactions_data = data.pop('transactions', [])
+                transactions_data = data.pop('sales_transactions', [])
                 
                 # Generate sales_code
                 data['sales_code'] = generate_sequential_code(Sales, 'sales_code', 'SL')
-                
-                # Validate uniqueness of sales_code loop if needed? 
-                # For now assume collision low.
                 
                 # Create Sales Record
                 sales = CommonQuery.createRecord(Sales, data, request)

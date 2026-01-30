@@ -192,8 +192,8 @@ SIMPLE_JWT = {
 }
 
 # Media Files
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+MEDIA_URL = '/upload/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'upload')
 
 # CORS Settings
 CORS_ALLOWED_ORIGINS = [
