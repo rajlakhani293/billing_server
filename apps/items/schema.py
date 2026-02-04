@@ -1,6 +1,8 @@
 from ninja import Schema
 from typing import Optional
 from decimal import Decimal
+from ninja import ModelSchema
+from .models import Item
 
 class ItemDropdownSchema(Schema):
     id: int
@@ -13,13 +15,32 @@ class ItemDropdownSchema(Schema):
     class Config:
         from_attributes = True
 
+
 class ItemStatusUpdateSchema(Schema):
     id: int
     status: int
 
+
+class ItemCategoryCreateSchema(Schema):
+    name: str
+    description: Optional[str] = None
+
+class ItemCategoryUpdateSchema(Schema):
+    name: str
+    description: Optional[str] = None
+
+class ItemUnitCreateSchema(Schema):
+    name: str
+    short_name: str
+
+class ItemUnitUpdateSchema(Schema):
+    name: str
+    short_name: str
+
 class ItemCreateSchema(Schema):
     item_name: str
     primary_unit: int
+    category: Optional[int] = None
     description: Optional[str] = None
     purchase_price: Optional[Decimal] = 0.00
     selling_price: Optional[Decimal] = 0.00
@@ -32,3 +53,25 @@ class ItemCreateSchema(Schema):
     brand: Optional[str] = None
     barcode: Optional[str] = None
     status: Optional[int] = 0
+
+class ItemIn(Schema):
+    item_code: Optional[str] = None
+    item_name: str
+    category_id: int
+    description: Optional[str] = None
+    purchase_price: Decimal = Decimal("0.00")
+    selling_price: Decimal = Decimal("0.00")
+    tax_rate: Decimal = Decimal("0.00")
+    hsn_code: Optional[str] = None
+    opening_stock: Decimal = Decimal("0.00")
+    min_stock_level: Decimal = Decimal("0.00")
+    max_stock_level: Decimal = Decimal("0.00")
+    primary_unit_id: int
+    item_weight: Optional[Decimal] = None
+    brand: Optional[str] = None
+    barcode: Optional[str] = None
+
+class ItemOut(ModelSchema):
+    class Meta:
+        model = Item
+        fields = '__all__'

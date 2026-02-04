@@ -297,21 +297,16 @@ class AuthService:
             return ResponseBuilder.error(f'Logout failed: {str(e)}')
 
     @staticmethod
-    def get_session_data(payload: dict) -> dict:
+    def get_session_data(request) -> dict:
         """Get comprehensive user session data"""
         try:
-            user_id = payload.get('user_id')
-            shop_id = payload.get('shop_id')
-
-            if not user_id or not shop_id:
-                return ResponseBuilder.error("user_id and shop_id are required")
+            # Extract user and shop from authenticated request
+            auth_data = request.auth
+            if not auth_data:
+                return ResponseBuilder.error("Authentication required")
             
-            # Fetch user
-            user = User.objects.get(id=user_id)
-
-            # Validate that the user has access to the specified shop
-            if not user.shops.filter(id=shop_id).exists():
-                return ResponseBuilder.error("User does not have access to this shop")
+            user = auth_data['user']
+            shop = auth_data['shop']
             
             # Get user's shops
             shops = user.shops.all()
@@ -319,40 +314,40 @@ class AuthService:
                  
             # Build shop list with enriched data
             shop_list = []
-            for shop in shops:
+            for shop_item in shops:
                 shop_data = {
-                    'shop_id': shop.id,
-                    'shop_code': shop.shop_code,
-                    'shop_name': shop.shop_name,
-                    'legal_name': shop.legal_name,
-                    'email': shop.email,
-                    'phone_number': shop.phone_number,
-                    'tax_no': shop.tax_no,
-                    'pan_no': shop.pan_no,
-                    'address': shop.address,
-                    'pincode': shop.pincode,
+                    'shop_id': shop_item.id,
+                    'shop_code': shop_item.shop_code,
+                    'shop_name': shop_item.shop_name,
+                    'legal_name': shop_item.legal_name,
+                    'email': shop_item.email,
+                    'phone_number': shop_item.phone_number,
+                    'tax_no': shop_item.tax_no,
+                    'pan_no': shop_item.pan_no,
+                    'address': shop_item.address,
+                    'pincode': shop_item.pincode,
                     'city': {
-                        'id': shop.city.id if shop.city else None,
-                        'name': shop.city.name if shop.city else None
-                    } if shop.city else None,
+                        'id': shop_item.city.id if shop_item.city else None,
+                        'name': shop_item.city.name if shop_item.city else None
+                    } if shop_item.city else None,
                     'state': {
-                        'id': shop.state.id if shop.state else None,
-                        'name': shop.state.name if shop.state else None
-                    } if shop.state else None,
+                        'id': shop_item.state.id if shop_item.state else None,
+                        'name': shop_item.state.name if shop_item.state else None
+                    } if shop_item.state else None,
                     'country': {
-                        'id': shop.country.id if shop.country else None,
-                        'name': shop.country.name if shop.country else None
-                    } if shop.country else None,
-                    'logo_image_url': str(shop.logo_image) if shop.logo_image else None,
-                    'default_shop': shop.default_shop,
-                    'status': shop.status,
+                        'id': shop_item.country.id if shop_item.country else None,
+                        'name': shop_item.country.name if shop_item.country else None
+                    } if shop_item.country else None,
+                    'logo_image_url': str(shop_item.logo_image) if shop_item.logo_image else None,
+                    'default_shop': shop_item.default_shop,
+                    'status': shop_item.status,
                 }
                 shop_list.append(shop_data)
             
-            # Current shop (primary shop)
+            # Current shop (from token)
             current_shop = None
-            if primary_shop:
-                current_shop = next((shop for shop in shop_list if shop['shop_id'] == primary_shop.id), None)
+            if shop:
+                current_shop = next((shop_item for shop_item in shop_list if shop_item['shop_id'] == shop.id), None)
             
             # Enriched user data
             enriched_user = {

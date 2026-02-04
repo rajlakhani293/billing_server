@@ -47,6 +47,11 @@ class Party(IntegerModel, TimestampedModel):
             models.Index(fields=['phone_number']),
             models.Index(fields=['email']),
         ]
+        unique_together = [
+            ['shop', 'name'],
+            ['shop', 'phone_number'],
+            ['shop', 'email'],
+        ]
 
     def __str__(self):
         return f"{self.name} ({self.get_party_type_display()})"

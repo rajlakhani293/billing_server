@@ -1,76 +1,163 @@
 from django.db import transaction
 from django.conf import settings
-from apps.core.helpers import ResponseBuilder, validate_request, generate_sequential_code
-from .models import Item
-from apps.core.commonQuery import CommonQuery
+from apps.core.helpers import ResponseBuilder, generate_sequential_code
+from .models import Item, ItemCategory, ItemUnit
+from apps.core.commonQuery import CommonQuery, uploadFile
 
-class ItemService:
-    
+class ItemCategoryService:
     @staticmethod
     def create(data, request):
         try:
             with transaction.atomic():
-
-                required_fields = {
-                    'item_name': 'Item Name',
-                    'primary_unit': 'Primary Unit',
-                }
-                
-                unique_checks = {
-                    'model': Item,
-                    'fields': ['item_name']
-                }
-                
-                errors = validate_request(data, required_fields, unique_checks, request)
-                if errors:
-                    raise Exception(f"Validation failed: {errors}")
-                
-                data['item_code'] = generate_sequential_code(Item, 'item_code', 'IT')
-                
-                item = CommonQuery.createRecord(Item, data, request)
-                
-                serialized_item = CommonQuery.serializeModelInstance(item)
-                
+                category = CommonQuery.createRecord(ItemCategory, data, request)
                 return ResponseBuilder.success(
-                    data=serialized_item,
-                    message="Item created successfully"
+                    data=category,
+                    message="Category created successfully"
                 )
-                
         except Exception as e:
-            return ResponseBuilder.error(
-                message=str(e),
-                status_code=400
-            )
+            return ResponseBuilder.error(message=str(e), status_code=400)
+
+    @staticmethod
+    def update(data, request, category_id):
+        try:
+            with transaction.atomic():
+                category = CommonQuery.updateRecordById(ItemCategory, category_id, data, request)
+                if not category:
+                    raise Exception("Category not found")
+                return ResponseBuilder.success(data=category, message="Category updated successfully")
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+
+    @staticmethod
+    def getAll(data, request):
+        try:
+            fieldConfig = [["name", True, True]]
+            options = {'attributes': ['id', 'name', 'description', 'status']}
+            result = CommonQuery.fetchPaginatedData(ItemCategory, data, fieldConfig, options, request)
+            return ResponseBuilder.success(data=result, message="Categories retrieved successfully")
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+
+    @staticmethod
+    def dropdownList(request):
+        try:
+            categories = CommonQuery.findAllRecords(ItemCategory, {'status': 0}, {'attributes': ['id', 'name'], 'order': ['name']}, request)
+            return ResponseBuilder.success(data=categories, message="Dropdown list retrieved successfully")
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+            
+    @staticmethod
+    def delete(data, request):
+        try:
+            with transaction.atomic():
+                count = CommonQuery.softDeleteById(ItemCategory, data.get('ids'), request)
+                if count == 0: raise Exception("Already deleted")
+                return ResponseBuilder.success(message="Categories deleted successfully")
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+
+    @staticmethod
+    def getById(category_id, request):
+        try:
+            category = CommonQuery.findOneRecord(ItemCategory, category_id, {}, request)
+            if not category or category.get('status') == 2: raise Exception("Category not found")
+            return ResponseBuilder.success(data=category, message="Category retrieved successfully")
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+
+
+class ItemUnitService:
+    @staticmethod
+    def create(data, request):
+        try:
+            with transaction.atomic():
+                unit = CommonQuery.createRecord(ItemUnit, data, request)
+                return ResponseBuilder.success(data=unit, message="Unit created successfully")
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+
+    @staticmethod
+    def update(data, request, unit_id):
+        try:
+            with transaction.atomic():
+                unit = CommonQuery.updateRecordById(ItemUnit, unit_id, data, request)
+                if not unit:
+                    raise Exception("Unit not found")
+                return ResponseBuilder.success(data=unit, message="Unit updated successfully")
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+
+    @staticmethod
+    def getAll(data, request):
+        try:
+            fieldConfig = [["name", True, True], ["short_name", True, True]]
+            options = {'attributes': ['id', 'name', 'short_name', 'status']}
+            result = CommonQuery.fetchPaginatedData(ItemUnit, data, fieldConfig, options, request)
+            return ResponseBuilder.success(data=result, message="Units retrieved successfully")
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+
+    @staticmethod
+    def dropdownList(request):
+        try:
+            units = CommonQuery.findAllRecords(ItemUnit, {}, {'attributes': ['id', 'name', 'short_name'], 'order': ['name']}, request)
+            return ResponseBuilder.success(data=units, message="Dropdown list retrieved successfully")
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+            
+    @staticmethod
+    def delete(data, request):
+        try:
+            with transaction.atomic():
+                count = CommonQuery.softDeleteById(ItemUnit, data.get('ids'), request)
+                if count == 0: raise Exception("Already deleted")
+                return ResponseBuilder.success(message="Units deleted successfully")
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
     
     @staticmethod
-    def update(data, request, item_id):
+    def getById(unit_id, request):
         try:
-            with transaction.atomic():    
-                required_fields = {
-                    'item_name': 'Item Name',
-                    'primary_unit': 'Primary Unit',
-                }
+            unit = CommonQuery.findOneRecord(ItemUnit, unit_id, {}, request)
+            if not unit or unit.get('status') == 2: raise Exception("Unit not found")
+            return ResponseBuilder.success(data=unit, message="Unit retrieved successfully")
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+
+
+class ItemService:
+    
+    @staticmethod
+    def create(request, payload: dict, image_file=None):
+        try:
+            with transaction.atomic():
+
+                if image_file:
+                    saved_files = uploadFile(image_file, subfolder="items")
+                    payload['item_image'] = saved_files.get('file')
                 
-                unique_checks = {
-                    'model': Item,
-                    'fields': ['item_name'],
-                    'exclude_id': item_id
-                }
+                payload['item_code'] = generate_sequential_code(Item, 'item_code', 'IT')
+
+                item = CommonQuery.createRecord(Item, payload, request)
+
+                return ResponseBuilder.success(
+                    message="Item created successfully",
+                    data=item
+                )
+        except Exception as e:
+            return ResponseBuilder.error(str(e))
+
+    @staticmethod
+    def delete(data, request):
+        try:
+            with transaction.atomic():
+                count = CommonQuery.softDeleteById(Item, data.get('ids'), request)
                 
-                errors = validate_request(data, required_fields, unique_checks, request)
-                if errors:
-                    raise Exception(f"Validation failed: {errors}")
-                
-                item = CommonQuery.updateRecordById(Item, item_id, data, request)
-                
-                if not item:
-                    raise Exception("Item not found")
-                
-                serialized_item = CommonQuery.serializeModelInstance(item)
+                if count == 0:
+                    raise Exception("No records found")
                 
                 return ResponseBuilder.success(
-                    data=serialized_item,
-                    message="Item updated successfully"
+                    message="Items deleted successfully"
                 )
                 
         except Exception as e:
@@ -78,7 +165,7 @@ class ItemService:
                 message=str(e),
                 status_code=400
             )
-    
+
     @staticmethod
     def getAll(data, request):
         try:
@@ -110,90 +197,12 @@ class ItemService:
                 status_code=400
             )
 
-    
-    @staticmethod
-    def getById(item_id, request):
-        try:
-            item = CommonQuery.findOneRecord(
-                Item, 
-                item_id, 
-                {},
-                request
-            )
-            
-            if not item or item.get('status') == 2:
-                raise Exception("Item not found")
-            
-            return ResponseBuilder.success(
-                data=item,
-                message="Item retrieved successfully"
-            )
-            
-        except Exception as e:
-            return ResponseBuilder.error(
-                message=str(e),
-                status_code=400
-            )
-    
-    @staticmethod
-    def delete(data, request):
-        try:
-            with transaction.atomic():
-                ids = data.get('ids')
-                if not isinstance(ids, list) or not ids:
-                    raise Exception("Select at least one record")
-                
-                # Soft delete using transaction
-                count = CommonQuery.softDeleteById(Item, ids, request)
-                
-                if count == 0:
-                    raise Exception("Already deleted")
-                
-                return ResponseBuilder.success(
-                    message="Items deleted successfully"
-                )
-                
-        except Exception as e:
-            return ResponseBuilder.error(
-                message=str(e),
-                status_code=400
-            )
-    
-    @staticmethod
-    def updateStatus(data, request):
-        try:
-            with transaction.atomic():
-                ids = data.get('ids')
-                status = data.get('status')
-                
-                if not isinstance(ids, list) or not ids:
-                    raise Exception("Select at least one record")
-                
-                if status not in [0, 1]:
-                    raise Exception("Invalid status")
-                
-                # Update status using transaction
-                updated_record = CommonQuery.updateRecordById(Item, ids, {'status': status}, request)
-                
-                if not updated_record:
-                    raise Exception("Records not found")
-                
-                return ResponseBuilder.success(
-                    message="Items status updated successfully"
-                )
-                
-        except Exception as e:
-            return ResponseBuilder.error(
-                message=str(e),
-                status_code=400
-            )
-    
     @staticmethod
     def dropdownList(request):
         try:         
             items = CommonQuery.findAllRecords(
                 Item, 
-                {'status': 0},
+                {},
                 {'attributes': ['id', 'item_name', 'item_code', 'current_stock', 'selling_price', 'item_image'], 'order': ['item_name']},
                 request
             )
@@ -215,3 +224,12 @@ class ItemService:
                 message=str(e),
                 status_code=400
             )
+
+    @staticmethod
+    def getById(item_id, request):
+        try:
+            item = CommonQuery.findOneRecord(Item, item_id, {}, request)
+            if not item or item.get('status') == 2: raise Exception("Item not found")
+            return ResponseBuilder.success(data=item, message="Item retrieved successfully")
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)

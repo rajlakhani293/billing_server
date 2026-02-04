@@ -36,8 +36,39 @@ def check_recent_verification(phone_number: str) -> dict:
 
 def validation_error_handler(request, exc: ValidationError):
     first_error = exc.errors[0]
-    field = first_error["loc"][-1]
-    message = f"{field} required"
+    field = str(first_error["loc"][-1])
+    error_type = first_error.get("type")
+    
+    # Clean up field name
+    if field.endswith('_id'):
+        field = field[:-3]
+    
+    field_name = field.replace('_', ' ').title()
+    
+    # Standardize messages based on Pydantic error types
+    if error_type == "missing":
+        message = f"{field_name} is required"
+    elif error_type == "string_type":
+        message = f"{field_name} must be a valid string"
+    elif error_type == "int_parsing" or error_type == "int_type":
+        message = f"{field_name} must be a valid integer"
+    elif error_type == "decimal_parsing":
+        message = f"{field_name} must be a valid decimal number"
+    elif error_type == "bool_type":
+        message = f"{field_name} must be a true/false value"
+    elif error_type == "value_error.missing":
+        message = f"{field_name} is required"
+    elif error_type == "value_error":
+         # Use the custom message from the validator if available
+         msg = first_error.get("msg")
+         if msg and not "Value error," in msg:
+             message = msg
+         else:
+             message = f"Invalid value for {field_name}"    
+    else:
+        # Fallback to the raw message but cleaner
+        raw_msg = first_error.get("msg", "Invalid Input")
+        message = f"{field_name}: {raw_msg}"
 
     return JsonResponse({
         "success": False,
@@ -60,20 +91,69 @@ class ResponseBuilder:
     
     @staticmethod
     def error(message: str, status_code: int = 400) -> dict:
-        """Return error response"""
-        # Handle HttpError exceptions
-        if isinstance(message, HttpError):
-            return {
-                'success': False,
-                'code': message.status_code,
-                'message': message.message,
-            }
-        # Handle regular error messages
         return {
             'success': False,
-            'code': status_code,
-            'message': message,
+            'code': status_code or 400,
+            'message': ResponseBuilder._parse_error_content(message),
         }
+    
+    @staticmethod
+    def _parse_error_content(message: str) -> str:
+        message_str = str(message)
+
+        if "(1062," in message_str and "Duplicate entry" in message_str:
+            try:
+                # Extract value and key
+                import re
+                match = re.search(r"Duplicate entry '(.+?)' for key '(.+?)'", message_str)
+                if match:
+                    value = match.group(1)
+                    key = match.group(2)
+                  
+                    key_clean = key
+                    for suffix in ['_uniq', '_unique', '_key']:
+                        if key_clean.endswith(suffix):
+                            key_clean = key_clean[:-len(suffix)]
+                            
+                    parts = key_clean.split('_')
+                    meaningful_parts = []
+                    for part in parts:
+                        if len(part) > 6 and re.match(r'^[a-f0-9]+$', part):
+                            continue
+                        if part.isdigit():
+                            continue
+                        
+                        if part in ['shop', 'id', 'pk']:
+                            continue
+                            
+                        meaningful_parts.append(part)
+                    
+                    if len(meaningful_parts) > 1:
+                        if meaningful_parts[0].endswith('s'):
+                            meaningful_parts = meaningful_parts[1:]
+                            
+                    field_name = ' '.join(meaningful_parts).title()
+                    
+                    return f"{field_name} already exists"
+            except:
+                pass
+
+        if "(1048," in message_str and "cannot be null" in message_str:
+            try:
+                import re
+                match = re.search(r"Column '(.+?)' cannot be null", message_str)
+                if match:
+                    column = match.group(1)
+                    # Clean up column name
+                    column = column.replace('_', ' ').title()
+                    return f"{column} is required"
+            except:
+                pass
+                
+        if message_str.startswith("['") and message_str.endswith("']"):
+            return message_str[2:-2]
+            
+        return message_str
 
 def normalize_phone_number(phone_number: str) -> str:
         try:
@@ -96,58 +176,6 @@ def normalize_phone_number(phone_number: str) -> str:
             return phone_number
         except Exception as e:
             raise ValueError(f'Invalid phone number format: {str(e)}')
-
-def validate_request(data, required_fields, unique_checks=None, request=None):
-    """Validate request data with required fields and unique checks
-    
-    Args:
-        data: Dictionary containing request data
-        required_fields: Dict of {field_name: display_name} for required validation
-        unique_checks: Dict with 'model' and 'fields' list for unique validation
-        request: Django request object for tenant context
-    
-    Returns:
-        Dict of field errors (empty if validation passes)
-    """
-    errors = {}
-    
-    # Check required fields
-    for field, display_name in required_fields.items():
-        if field not in data or data[field] is None or str(data[field]).strip() == '':
-            errors[field] = f"{display_name} is required"
-    
-    # Check unique fields
-    if unique_checks:
-        model = unique_checks.get('model')
-        unique_fields = unique_checks.get('fields', [])
-        exclude_id = unique_checks.get('exclude_id') 
-        
-        for field in unique_fields:
-            if field in data and data[field]:
-                # Build filter for unique check
-                filter_kwargs = {field: data[field]}
-                
-                # Add shop filter for multi-tenant
-                if request and hasattr(request, 'user') and request.user.is_authenticated:
-                    shop_id = (
-                        getattr(request.user, 'primary_shop_id', None) or
-                        request.META.get('HTTP_X_SHOP_ID') or
-                        request.GET.get('shop_id')
-                    )
-                    if shop_id:
-                        filter_kwargs['shop_id'] = shop_id
-                
-                # Exclude current record for updates
-                if exclude_id:
-                    existing = model.objects.filter(**filter_kwargs).exclude(id=exclude_id).first()
-                else:
-                    existing = model.objects.filter(**filter_kwargs).first()
-                
-                if existing:
-                    errors[field] = f"This {field.replace('_', ' ')} already exists"
-    
-    return errors
-
 
 def generate_otp(phone_number: str, validity_minutes: int = 5, otp_type: str = 'LOGIN'):
     """Generate OTP with rate limiting - block for 1 hour if 3 OTPs requested within last hour"""

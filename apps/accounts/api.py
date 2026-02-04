@@ -51,9 +51,9 @@ def logout(request, payload: LogoutSchema):
     return AuthService.logout(payload.refresh)
 
 # Session Data
-@auth_router.post('/session-data', auth=AuthBearer())
-def session_data(request, payload: SessionDataRequestSchema):
-    return AuthService.get_session_data(payload.dict())
+@auth_router.get('/session-data', auth=AuthBearer())
+def session_data(request):
+    return AuthService.get_session_data(request)
 
 
 # ================================================================= ================================================================= =================================================================
