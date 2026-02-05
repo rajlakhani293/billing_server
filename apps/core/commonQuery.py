@@ -96,6 +96,10 @@ def serializeModelInstance(instance):
         
     data = model_to_dict(instance)
     
+    # Ensure ID is included (model_to_dict excludes AutoField/primary_key by default)
+    if instance.pk:
+         data['id'] = instance.pk
+    
     # Handle ImageField/FileField specifically
     for field in instance._meta.fields:
         if field.get_internal_type() in ['FileField', 'ImageField']:

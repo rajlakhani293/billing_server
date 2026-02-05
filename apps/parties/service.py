@@ -9,8 +9,8 @@ class PartyService:
     def create(data, request):
         try:
             with transaction.atomic():
-                party = CommonQuery.createRecord(Party, data, request)
-                return ResponseBuilder.success(data=party, message="Party created successfully")
+                CommonQuery.createRecord(Party, data, request)
+                return ResponseBuilder.success(message="Party created successfully")
         except Exception as e:
             return ResponseBuilder.error(message=str(e), status_code=400)
 
@@ -18,10 +18,8 @@ class PartyService:
     def update(data, request, record_id):
         try:
             with transaction.atomic():
-                party = CommonQuery.updateRecordById(Party, record_id, data, request)
-                if not party:
-                    raise Exception("Party not found")
-                return ResponseBuilder.success(data=party, message="Party updated successfully")
+                CommonQuery.updateRecordById(Party, record_id, data, request)
+                return ResponseBuilder.success(message="Party updated successfully")
         except Exception as e:
             return ResponseBuilder.error(message=str(e), status_code=400)
 

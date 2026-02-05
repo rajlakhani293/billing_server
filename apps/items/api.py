@@ -1,9 +1,8 @@
 from ninja import Router, File, UploadedFile, Form
 from apps.core.auth import AuthBearer
 from .service import ItemService, ItemCategoryService, ItemUnitService
-from apps.core.schema import DeleteSchema, UpdateStatusSchema
-from .schema import ItemCreateSchema, ItemCategoryCreateSchema, ItemCategoryUpdateSchema, ItemUnitUpdateSchema, ItemUnitCreateSchema, ItemIn, ItemOut
-from .models import Item
+from apps.core.schema import DeleteSchema
+from .schema import ItemCategoryCreateSchema, ItemCategoryUpdateSchema, ItemUnitUpdateSchema, ItemUnitCreateSchema, ItemIn
 
 # ================================================================= ================================================================= =================================================================
 # Items CRUD APIs

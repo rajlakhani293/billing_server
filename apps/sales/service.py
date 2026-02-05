@@ -1,99 +1,123 @@
-# from django.db import transaction
-# from apps.core.helpers import ResponseBuilder, validate_request, generate_sequential_code
-# from .models import Sales, SalesTransaction
-# from apps.core.commonQuery import CommonQuery
-# import datetime
-# import random
+from django.db import transaction
+from apps.core.helpers import ResponseBuilder, generate_sequential_code
+from .models import Sales, SalesTransaction
+from apps.core.commonQuery import CommonQuery, get_auth_context
 
-
-# class SalesService:
+class SalesService:
     
-#     @staticmethod
-#     def create(data, request):
-#         try:
-#             with transaction.atomic():
-#                 # Extract transactions
-#                 transactions_data = data.pop('sales_transactions', [])
+    @staticmethod
+    def create(request, payload: dict):
+        try:
+            with transaction.atomic():
+                # Extract transactions data
+                transactions_data = payload.pop('transactions', [])
                 
-#                 # Generate sales_code
-#                 data['sales_code'] = generate_sequential_code(Sales, 'sales_code', 'SL')
+                # Generate Sales Code
+                payload['sales_code'] = generate_sequential_code(Sales, 'sales_code', 'SL')
                 
-#                 # Create Sales Record
-#                 sales = CommonQuery.createRecord(Sales, data, request)
+                # Create Sales Record
+                sales = CommonQuery.createRecord(Sales, payload, request)
                 
-#                 # Create Transactions
-#                 for trans_data in transactions_data:
-#                     trans_data['sales_id'] = sales['id']
-#                     # Ensure item_id is passed correctly to FK
-#                     if 'item_id' in trans_data:
-#                         trans_data['item_id'] = trans_data.pop('item_id')
-                    
-#                     CommonQuery.createRecord(SalesTransaction, trans_data, request)
+                # Create Sales Transactions
+                for trans_data in transactions_data:
+                    trans_data['sales_id'] = sales['id']
+                    # Ensure status is active by default if not provided
+                    if 'status' not in trans_data:
+                        trans_data['status'] = 0
+                    CommonQuery.createRecord(SalesTransaction, trans_data, request)
                 
-#                 # Serialize response ? Or just return ID
-#                 return ResponseBuilder.success(
-#                     data={'id': sales['id'], 'sales_code': sales['sales_code']},
-#                     message="Sales created successfully"
-#                 )
-                
-#         except Exception as e:
-#             return ResponseBuilder.error(
-#                 message=str(e),
-#                 status_code=400
-#             )
+                return ResponseBuilder.success(
+                    message="Sales created successfully",
+                    data=sales
+                )
+        except Exception as e:
+            return ResponseBuilder.error(str(e))
 
-#     @staticmethod
-#     def revoke(data, request):
-#         try:
-#             with transaction.atomic():
-#                 sales_revoked = CommonQuery.softDeleteById(Sales, data.get('ids'), request)
+    @staticmethod
+    def delete(data, request):
+        try:
+            ids = data.get('ids')
+            with transaction.atomic():
+                count = CommonQuery.softDeleteById(Sales, ids, request)
                 
-#                 if sales_revoked == 0:
-#                      raise Exception("Sales not found or already deleted")
+                if count == 0:
+                    raise Exception("No records found")
+
+                transactions = CommonQuery.findAllRecords(
+                    SalesTransaction, 
+                    {'sales': ids}, 
+                    {'attributes': ['id']}, 
+                    request
+                )
                 
-#                 # Soft delete related transactions
-#                 SalesTransaction.objects.filter(sales_id__in=ids).update(status=2)
+                transaction_ids = [t['id'] for t in transactions]
+                
+                if transaction_ids:
+                    CommonQuery.softDeleteById(SalesTransaction, transaction_ids, request)
+                
+                return ResponseBuilder.success(
+                    message="Sales deleted successfully"
+                )
+                
+        except Exception as e:
+            return ResponseBuilder.error(
+                message=str(e),
+                status_code=400
+            )
 
-#                 return ResponseBuilder.success(
-#                     message="Sales revoked successfully"
-#                 )
-#         except Exception as e:
-#             return ResponseBuilder.error(
-#                 message=str(e),
-#                 status_code=400
-#             )
+    @staticmethod
+    def getAll(data, request):
+        try:
+            # Field configuration: [field_name, is_searchable, is_sortable]
+            fieldConfig = [
+                ["sales_code", True, True],
+                ["party__name", True, True],
+                ["total_amount", True, True],
+                ["payment_mode", True, True],
+                ["sales_date", True, True],
+            ]
+            
+            options = {
+                'attributes': [
+                    'id', 'sales_code', 'party__name', 'sales_date', 
+                    'total_amount', 'paid_amount', 'payment_mode', 'status'
+                ],
+            }
+            
+            result = CommonQuery.fetchPaginatedData(
+                Sales, data, fieldConfig, options, request
+            )
+            
+            return ResponseBuilder.success(
+                data=result,
+                message="Sales retrieved successfully"
+            )
+            
+        except Exception as e:
+            return ResponseBuilder.error(
+                message=str(e),
+                status_code=400
+            )
 
-#     @staticmethod
-#     def getAll(data, request):
-#         try:
-#             # Field configuration: [field_name, is_searchable, is_sortable]
-#             fieldConfig = [
-#                 ["sales_code", True, True],
-#                 ["party__name", True, True], # Search by party name
-#             ]
+    @staticmethod
+    def getById(sales_id, request):
+        try:
+            # Fetch the main sales record
+            sales = CommonQuery.findOneRecord(Sales, sales_id, {}, request)
+            if not sales or sales.get('status') == 2: 
+                raise Exception("Sales record not found")
             
-#             # Options for related data
-#             options = {
-#                 'select_related': ['party', 'shop'],
-#                 'sumField': ['total_amount']
-#             }
+            # Fetch associated transactions
+            # We can use CommonQuery to find all transactions for this sale
+            transactions = CommonQuery.findAllRecords(
+                SalesTransaction, 
+                {'sales_id': sales_id, 'status': 0}, 
+                {'attributes': ['id', 'item__item_name', 'item_quantity', 'item_rate', 'total_amount', 'item_description', 'discount_percentage', 'discount_amount', 'tax_amount']}, 
+                request
+            )
             
-#             custom_related_fields = {
-#                 'party': ['id', 'name'],
-#                 'shop': ['id', 'shop_name']
-#             }
+            sales['transactions'] = transactions
             
-#             result = CommonQuery.fetchPaginatedData(
-#                 Sales, data, fieldConfig, options, request, custom_related_fields=custom_related_fields
-#             )
-            
-#             return ResponseBuilder.success(
-#                 data=result,
-#                 message="Sales retrieved successfully"
-#             )
-            
-#         except Exception as e:
-#             return ResponseBuilder.error(
-#                 message=str(e),
-#                 status_code=400
-#             )
+            return ResponseBuilder.success(data=sales, message="Sales retrieved successfully")
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)

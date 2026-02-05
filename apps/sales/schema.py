@@ -1,51 +1,44 @@
 from ninja import Schema
-from typing import List, Optional
-from datetime import datetime
+from typing import Optional, List
 from decimal import Decimal
+from datetime import datetime
 
-
-class SalesTransactionCreateSchema(Schema):
+class SalesTransactionSchema(Schema):
     item_id: int
-    item_description: str
     item_quantity: Decimal
     item_rate: Decimal
+    item_description: Optional[str] = None
     discount_percentage: Optional[Decimal] = 0.00
     discount_amount: Optional[Decimal] = 0.00
     tax_amount: Optional[Decimal] = 0.00
     total_amount: Decimal
 
+    class Config:
+        from_attributes = True
 
-class SalesCreateSchema(Schema):
-    sales_date: datetime
+class SalesIn(Schema):
     party_id: Optional[int] = None
-    payment_mode: int
-    notes: Optional[str] = None
-    
+    sales_date: datetime
     # Financials
     subtotal: Decimal
     tax_amount: Optional[Decimal] = 0.00
     discount_percentage: Optional[Decimal] = 0.00
     discount_amount: Optional[Decimal] = 0.00
     total_amount: Decimal
-    paid_amount: Decimal
+    paid_amount: Decimal = Decimal("0.00")
     
-    # Nested transactions
-    sales_transactions: List[SalesTransactionCreateSchema]
+    # Payment and Status
+    payment_mode: int = 1
+    notes: Optional[str] = None
+    
+    # Transactions
+    transactions: List[SalesTransactionSchema]
 
-
-class SalesFilterSchema(Schema):
-    page: Optional[int] = 1
-    limit: Optional[int] = 10
-    search: Optional[str] = None
-    startDate: Optional[str] = None
-    endDate: Optional[str] = None
-    status: Optional[int] = None
-    payment_mode: Optional[int] = None
+class SalesUpdateSchema(Schema):
     party_id: Optional[int] = None
-    sortBy: Optional[str] = "created_at"
-    sortDirection: Optional[str] = "descending"
-
-
-class RevokeSchema(Schema):
-    ids: List[int]
-
+    sales_date: Optional[datetime] = None
+    subtotal: Optional[Decimal] = None
+    total_amount: Optional[Decimal] = None
+    paid_amount: Optional[Decimal] = None
+    payment_mode: Optional[int] = None
+    notes: Optional[str] = None

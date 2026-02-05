@@ -1,8 +1,6 @@
 from ninja import Schema
 from typing import Optional
 from decimal import Decimal
-from ninja import ModelSchema
-from .models import Item
 
 class ItemDropdownSchema(Schema):
     id: int
@@ -15,11 +13,9 @@ class ItemDropdownSchema(Schema):
     class Config:
         from_attributes = True
 
-
 class ItemStatusUpdateSchema(Schema):
     id: int
     status: int
-
 
 class ItemCategoryCreateSchema(Schema):
     name: str
@@ -70,8 +66,3 @@ class ItemIn(Schema):
     item_weight: Optional[Decimal] = None
     brand: Optional[str] = None
     barcode: Optional[str] = None
-
-class ItemOut(ModelSchema):
-    class Meta:
-        model = Item
-        fields = '__all__'

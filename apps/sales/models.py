@@ -45,6 +45,9 @@ class Sales(IntegerModel, TimestampedModel):
             models.Index(fields=['sales_code']),
             models.Index(fields=['payment_mode']),
         ]
+        unique_together = [
+            ['shop', 'sales_code']
+        ]
     
     def __str__(self):
         party_name = self.party.name if self.party else "N/A"
@@ -81,6 +84,7 @@ class SalesTransaction(IntegerModel, TimestampedModel):
     tax_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text='Tax amount for this item')
     total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text='Total amount for this item') 
     status = models.IntegerField(default=0, help_text='0: Active, 1: Inactive, 2: Deleted')
+    shop = models.ForeignKey(Shop, on_delete=models.CASCADE, related_name='sales_transactions', help_text='Shop')
    
     class Meta:
         db_table = 'sales_transactions'
