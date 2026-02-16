@@ -173,13 +173,12 @@ class ItemService:
             fieldConfig = [
                 ["item_name", True, True],
                 ["item_code", True, True],
-                ["brand", True, True],
-                ["selling_price", True, True],
-                ["current_stock", True, True],
+                ['category', False, True],
+                ["brand", False, True],
             ]
             
             options = {
-                'attributes': ['id', 'item_name', 'item_code', 'current_stock', 'selling_price', 'status', 'brand'],
+                'attributes': ['id', 'item_name', 'item_code', 'category', 'current_stock', 'selling_price', 'brand'],
             }
             
             result = CommonQuery.fetchPaginatedData(

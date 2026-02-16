@@ -290,6 +290,10 @@ class AuthService:
         try:
             data = json.loads(request.body)
             refresh_token = data.get('refresh')
+            
+            if not refresh_token:
+                return ResponseBuilder.success('Logout successful')
+            
             token = RefreshToken(refresh_token)
             token.blacklist() 
             return ResponseBuilder.success('Logout successful')

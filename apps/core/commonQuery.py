@@ -224,6 +224,15 @@ class CommonQuery:
         try:
             if options is None:
                 options = {}
+            
+            # Handle JSON parsing if req_body is None and request has JSON body
+            if req_body is None and request and hasattr(request, 'content_type') and request.content_type == 'application/json':
+                import json
+                try:
+                    req_body = json.loads(request.body.decode('utf-8'))
+                except (json.JSONDecodeError, UnicodeDecodeError, AttributeError):
+                    req_body = {}
+            
             if req_body is None:
                 req_body = {}
             
@@ -295,11 +304,39 @@ class CommonQuery:
             # D. Date Range
             start_date = req_body.get('startDate')
             end_date = req_body.get('endDate')
+            
             if (start_date or end_date) and date_field in model_field_names:
                 if start_date:
-                    filters &= Q(**{f"{date_field}__gte": start_date})
+                    # Parse ISO date string to datetime object
+                    if isinstance(start_date, str):
+                        try:
+                            from datetime import datetime
+                            from dateutil.parser import parse
+                            start_date = parse(start_date)
+                        except (ImportError, ValueError):
+                            # Fallback to basic ISO format parsing
+                            try:
+                                start_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+                            except ValueError:
+                                pass  # Keep original string if parsing fails
+                    if start_date:
+                        filters &= Q(**{f"{date_field}__gte": start_date})
+                
                 if end_date:
-                    filters &= Q(**{f"{date_field}__lte": end_date})
+                    # Parse ISO date string to datetime object
+                    if isinstance(end_date, str):
+                        try:
+                            from datetime import datetime
+                            from dateutil.parser import parse
+                            end_date = parse(end_date)
+                        except (ImportError, ValueError):
+                            # Fallback to basic ISO format parsing
+                            try:
+                                end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+                            except ValueError:
+                                pass  # Keep original string if parsing fails
+                    if end_date:
+                        filters &= Q(**{f"{date_field}__lte": end_date})
 
             # E. Search
             search_term = req_body.get('search')
@@ -378,19 +415,36 @@ class CommonQuery:
                 # Use global serializeModelInstance
                 record_data = serializeModelInstance(obj)
                 
-                # Handle custom related fields (Only if obj is Model Instance)
-                if custom_related_fields and not isinstance(obj, dict):
+                # Handle custom related fields (Works with both Model Instances and Dictionaries)
+                if custom_related_fields:
                      for rel_field, rel_attrs in custom_related_fields.items():
-                          if hasattr(obj, rel_field):
-                               rel_obj = getattr(obj, rel_field)
-                               if rel_obj:
-                                    rel_data = {}
-                                    for attr in rel_attrs:
-                                         if hasattr(rel_obj, attr):
-                                              rel_data[attr] = getattr(rel_obj, attr)
-                                    record_data[rel_field] = rel_data
-                               else:
-                                    record_data[rel_field] = None
+                          if not isinstance(obj, dict):
+                              # Handle Model Instance
+                              if hasattr(obj, rel_field):
+                                           rel_obj = getattr(obj, rel_field)
+                                           if rel_obj:
+                                                rel_data = {}
+                                                for attr in rel_attrs:
+                                                     if hasattr(rel_obj, attr):
+                                                          rel_data[attr] = getattr(rel_obj, attr)
+                                                record_data[rel_field] = rel_data
+                                           else:
+                                                record_data[rel_field] = None
+                          elif rel_field in record_data and record_data[rel_field] is not None:
+                              # Handle Dictionary case - need to fetch the related object separately
+                              try:
+                                  rel_obj_id = record_data[rel_field]
+                                  if rel_obj_id:
+                                      # Get the related model dynamically
+                                      rel_model = obj._meta.get_field(rel_field).remote_field.model
+                                      rel_obj = rel_model.objects.get(id=rel_obj_id)
+                                      rel_data = {}
+                                      for attr in rel_attrs:
+                                           if hasattr(rel_obj, attr):
+                                                rel_data[attr] = getattr(rel_obj, attr)
+                                      record_data[rel_field] = rel_data
+                              except:
+                                  pass  # Keep original value if fetching fails
                 
                 serialized_data.append(record_data)
 
