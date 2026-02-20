@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User, OTP, MenuMaster, MenuModuleMaster
+from .models import User, OTP
 
 
 @admin.register(User)
@@ -124,82 +124,5 @@ class OTPAdmin(admin.ModelAdmin):
         ('Contact Info', {'fields': ('phone_number',)}),
         ('OTP Details', {'fields': ('otp_code', 'otp_type', 'is_verified')}),
         ('Rate Limiting', {'fields': ('attempts', 'blocked_until')}),
-        ('Timestamps', {'fields': ('created_at', 'updated_at')}),
-    )
-
-@admin.register(MenuMaster)
-class MenuMasterAdmin(admin.ModelAdmin):
-    list_display = ['id', 'menu_name', 'cust_menu_name', 'priority', 'menu_icon_name', 'status', 'created_at']
-    list_filter = ['status', 'created_at']
-    search_fields = ['menu_name', 'cust_menu_name', 'menu_icon_name']
-    ordering = ['priority', 'created_at']
-    readonly_fields = ['id', 'created_at', 'updated_at']
-    
-    def has_view_permission(self, request, obj=None):
-        # Only superusers can view menus
-        return request.user.is_superuser
-
-    def has_module_permission(self, request):
-        # Only superusers can see the menu module
-        return request.user.is_superuser
-
-    def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        # Only superusers see all menus
-        if request.user.is_superuser:
-            return qs
-        return qs.none()
-
-    def has_change_permission(self, request, obj=None):
-        # Only superusers can change menus
-        return request.user.is_superuser
-
-    def has_delete_permission(self, request, obj=None):
-        # Only superusers can delete menus
-        return request.user.is_superuser
-    
-    fieldsets = (
-        ('Menu Info', {'fields': ('menu_name', 'cust_menu_name', 'priority')}),
-        ('Menu Details', {'fields': ('menu_icon_name', 'menu_url')}),
-        ('Status', {'fields': ('status',)}),
-        ('Timestamps', {'fields': ('created_at', 'updated_at')}),
-    )
-
-
-@admin.register(MenuModuleMaster)
-class MenuModuleMasterAdmin(admin.ModelAdmin):
-    list_display = ['id', 'module_name', 'cust_module_name', 'menu', 'priority', 'module_visibility', 'status', 'created_at']
-    list_filter = ['status', 'module_visibility', 'menu', 'created_at']
-    search_fields = ['module_name', 'cust_module_name', 'module_icon_name']
-    ordering = ['priority', 'created_at']
-    readonly_fields = ['id', 'created_at', 'updated_at']
-    
-    def has_view_permission(self, request, obj=None):
-        # Only superusers can view modules
-        return request.user.is_superuser
-
-    def has_module_permission(self, request):
-        # Only superusers can see the module module
-        return request.user.is_superuser
-
-    def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        # Only superusers see all modules
-        if request.user.is_superuser:
-            return qs
-        return qs.none()
-
-    def has_change_permission(self, request, obj=None):
-        # Only superusers can change modules
-        return request.user.is_superuser
-
-    def has_delete_permission(self, request, obj=None):
-        # Only superusers can delete modules
-        return request.user.is_superuser
-    
-    fieldsets = (
-        ('Module Info', {'fields': ('menu', 'module_name', 'cust_module_name', 'priority')}),
-        ('Module Details', {'fields': ('module_url', 'module_description', 'module_permission_type_ids', 'module_icon_name')}),
-        ('Visibility & Status', {'fields': ('module_visibility', 'status')}),
         ('Timestamps', {'fields': ('created_at', 'updated_at')}),
     )

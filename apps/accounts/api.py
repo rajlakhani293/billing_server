@@ -2,7 +2,6 @@ from ninja import Router
 from django.contrib.auth import get_user_model
 from .schema import (
     SendOTPSchema,
-    SessionDataRequestSchema,
     VerifyOTPSchema,
     ShopRegistrationSchema,
     LoginSchema,
@@ -49,12 +48,6 @@ def login(request, payload: LoginSchema):
 @auth_router.post('/logout', auth=AuthBearer())
 def logout(request, payload: LogoutSchema):
     return AuthService.logout(payload.refresh)
-
-# Session Data
-@auth_router.get('/session-data', auth=AuthBearer())
-def session_data(request):
-    return AuthService.get_session_data(request)
-
 
 # ================================================================= ================================================================= =================================================================
 # OTP Limit Management APIs

@@ -1,4 +1,4 @@
-from ninja import Schema
+from ninja import Field, Schema
 from typing import Optional
 from decimal import Decimal
 
@@ -18,51 +18,48 @@ class ItemStatusUpdateSchema(Schema):
     status: int
 
 class ItemCategoryCreateSchema(Schema):
-    name: str
+    category_name: str = Field(..., min_length=1)
     description: Optional[str] = None
 
 class ItemCategoryUpdateSchema(Schema):
-    name: str
+    category_name: str = Field(..., min_length=1)
     description: Optional[str] = None
 
 class ItemUnitCreateSchema(Schema):
-    name: str
-    short_name: str
+    unit_name: str = Field(..., min_length=1)
+    short_name: str = Field(..., min_length=1)
 
 class ItemUnitUpdateSchema(Schema):
-    name: str
-    short_name: str
+    unit_name: str = Field(..., min_length=1)
+    short_name: str = Field(..., min_length=1)
 
-class ItemCreateSchema(Schema):
-    item_name: str
-    primary_unit: int
-    category: Optional[int] = None
-    description: Optional[str] = None
-    purchase_price: Optional[Decimal] = 0.00
-    selling_price: Optional[Decimal] = 0.00
-    tax_rate: Optional[Decimal] = 0.00
-    hsn_code: Optional[str] = None
-    opening_stock: Optional[Decimal] = 0.00
-    min_stock_level: Optional[Decimal] = 0.00
-    max_stock_level: Optional[Decimal] = 0.00
-    item_weight: Optional[Decimal] = None
-    brand: Optional[str] = None
-    barcode: Optional[str] = None
-    status: Optional[int] = 0
+class BrandCreateSchema(Schema):
+    brand_name: str = Field(..., min_length=1)
+
+class BrandUpdateSchema(Schema):
+    brand_name: str = Field(..., min_length=1)
+
+class TaxCreateSchema(Schema):
+    tax_name: str = Field(..., min_length=1)
+    tax_value: Decimal = Field(..., ge=0)
+
+class TaxUpdateSchema(Schema):
+    tax_name: str = Field(..., min_length=1)
+    tax_value: Decimal = Field(..., ge=0)
 
 class ItemIn(Schema):
     item_code: Optional[str] = None
-    item_name: str
+    item_name: str = Field(..., min_length=1)
     category_id: int
     description: Optional[str] = None
-    purchase_price: Decimal = Decimal("0.00")
+    purchase_price: Optional[Decimal] = Decimal("0.00")
     selling_price: Decimal = Decimal("0.00")
-    tax_rate: Decimal = Decimal("0.00")
+    tax: Optional[int] = None
     hsn_code: Optional[str] = None
-    opening_stock: Decimal = Decimal("0.00")
-    min_stock_level: Decimal = Decimal("0.00")
-    max_stock_level: Decimal = Decimal("0.00")
+    opening_stock: Optional[Decimal] = Decimal("0.00")
+    min_stock_level: Optional[Decimal] = Decimal("0.00")
+    max_stock_level: Optional[Decimal] = Decimal("0.00")
     primary_unit_id: int
     item_weight: Optional[Decimal] = None
-    brand: Optional[str] = None
+    brand_id: Optional[int] = None
     barcode: Optional[str] = None

@@ -7,7 +7,6 @@ from apps.core.helpers import check_recent_verification, normalize_phone_number,
 from apps.accounts.schema import ShopRegistrationSchema
 from rest_framework_simplejwt.tokens import RefreshToken
 from .models import User, OTP
-from .menu_service import MenuService
 from apps.shops.models import Shop
 from ninja.errors import HttpError
 import re
@@ -314,7 +313,6 @@ class AuthService:
             
             # Get user's shops
             shops = user.shops.all()
-            primary_shop = user.primary_shop
                  
             # Build shop list with enriched data
             shop_list = []
@@ -365,18 +363,13 @@ class AuthService:
                 'has_password': bool(user.password),
                 'profile_image_url': None
             }
-            
-            # Get sidebar menu
-            sidebar_menu_result = MenuService.get_menus_with_modules()
-            sidebar_menu = sidebar_menu_result.get('data', []) if sidebar_menu_result.get('success') else []
-            
+                       
             return ResponseBuilder.success(
                 'Session data retrieved successfully',
                 {
                     'shop_list': shop_list,
                     'shop': current_shop,
                     'user': enriched_user,
-                    'sidebarMenu': sidebar_menu
                 }
             )
         except Exception as e:

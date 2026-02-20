@@ -5,7 +5,6 @@ from typing import Optional
 class SendOTPSchema(Schema):
     phone_number: str
 
-
 class VerifyOTPSchema(Schema):
     phone_number: str
     otp_code: str
@@ -43,11 +42,6 @@ class LoginSchema(Schema):
 
 class LogoutSchema(Schema):
     refresh: str
-
-class SessionDataRequestSchema(Schema):
-    user_id: int
-    shop_id: int
-
 
 # OTP Limit Management Schemas
 class ResetOTPSchema(Schema):
