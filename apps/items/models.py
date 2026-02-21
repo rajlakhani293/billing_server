@@ -1,6 +1,7 @@
 from django.db import models
 from apps.core.models import IntegerModel, TimestampedModel
 from apps.shops.models import Shop
+from apps.settings.models import Brand, Tax
 
 class ItemCategory(IntegerModel, TimestampedModel):
     category_name = models.CharField(max_length=150, blank=False, null=False, help_text='Category name')
@@ -50,68 +51,12 @@ class ItemUnit(IntegerModel, TimestampedModel):
         return f"{self.unit_name} ({self.short_name})"
 
 
-class Brand(IntegerModel, TimestampedModel):
-    brand_name = models.CharField(max_length=150, blank=False, null=False, help_text='Brand name')
-    status = models.IntegerField(default=0, help_text='0: Active, 1: Inactive, 2: Deleted')
-    shop = models.ForeignKey(Shop, on_delete=models.CASCADE, related_name='brands', help_text='Associated shop')
-
-    class Meta:
-        db_table = 'brands'
-        verbose_name = 'Brand'
-        verbose_name_plural = 'Brands'
-        ordering = ['brand_name']
-        indexes = [
-            models.Index(fields=['shop', 'brand_name']),
-            models.Index(fields=['status']),
-        ]
-        unique_together = [['shop', 'brand_name']]
-        constraints = [
-            models.CheckConstraint(
-                check=~models.Q(brand_name=""), 
-                name="brand_name_not_empty"
-            )
-        ]
-
-    def __str__(self):
-        return self.brand_name
-
-
-class Tax(IntegerModel, TimestampedModel):
-    tax_name = models.CharField(max_length=150, unique=True, blank=False, null=False, help_text='Tax name')
-    tax_value = models.DecimalField(max_digits=5, decimal_places=2, default=0.00, help_text='Tax value/percentage')
-    status = models.IntegerField(default=0, help_text='0: Active, 1: Inactive, 2: Deleted')
-    shop = models.ForeignKey(Shop, on_delete=models.CASCADE, related_name='taxes', help_text='Associated shop')
-
-    class Meta:
-        db_table = 'taxes'
-        verbose_name = 'Tax'
-        verbose_name_plural = 'Taxes'
-        ordering = ['tax_name']
-        indexes = [
-            models.Index(fields=['shop', 'tax_name']),
-            models.Index(fields=['status']),
-        ]
-        unique_together = [['shop', 'tax_name']]
-        constraints = [
-            models.CheckConstraint(
-                check=~models.Q(tax_name=""), 
-                name="tax_name_not_empty"
-            ),
-            models.CheckConstraint(
-                check=models.Q(tax_value__gte=0), 
-                name="tax_value_non_negative"
-            )
-        ]
-
-    def __str__(self):
-        return f"{self.tax_name} ({self.tax_value}%)"
-
-
 class Item(IntegerModel, TimestampedModel):
     
     # Basic Information
     item_code = models.CharField(max_length=50, blank=False, null=False, help_text='Unique item code/SKU')
     item_image = models.ImageField(upload_to='item_image', blank=True, null=True, help_text='Item image')
+    item_images = models.JSONField(default=list, blank=True, help_text='List of item images with metadata')
     item_name = models.CharField(max_length=255, blank=False, null=False, help_text='Item name')
     category = models.ForeignKey(ItemCategory, on_delete=models.SET_NULL, null=True, blank=True, related_name='items', help_text='Item category')
     description = models.TextField(blank=True, null=True, help_text='Item description')
@@ -162,3 +107,44 @@ class Item(IntegerModel, TimestampedModel):
     
     def __str__(self):
         return f"{self.item_name} ({self.item_code})"
+    
+    def add_image(self, image_path, is_primary=False, alt_text="", sort_order=0):
+        """Add an image to the item_images JSON field"""
+        if is_primary:
+            # Set all existing images to non-primary
+            for img in self.item_images:
+                img['is_primary'] = False
+        
+        new_image = {
+            'id': len(self.item_images) + 1,
+            'image_path': image_path,
+            'is_primary': is_primary,
+            'alt_text': alt_text,
+            'sort_order': sort_order
+        }
+        self.item_images.append(new_image)
+        self.save()
+        return new_image
+    
+    def get_primary_image(self):
+        """Get the primary image from item_images"""
+        for img in self.item_images:
+            if img.get('is_primary', False):
+                return img
+        # If no primary image, return the first one if exists
+        return self.item_images[0] if self.item_images else None
+    
+    def get_all_images(self):
+        """Get all images sorted by sort_order"""
+        return sorted(self.item_images, key=lambda x: x.get('sort_order', 0))
+    
+    def set_primary_image(self, image_id):
+        """Set a specific image as primary"""
+        for img in self.item_images:
+            img['is_primary'] = (img.get('id') == image_id)
+        self.save()
+    
+    def remove_image(self, image_id):
+        """Remove an image by ID"""
+        self.item_images = [img for img in self.item_images if img.get('id') != image_id]
+        self.save()

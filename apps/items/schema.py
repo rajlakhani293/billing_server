@@ -33,19 +33,6 @@ class ItemUnitUpdateSchema(Schema):
     unit_name: str = Field(..., min_length=1)
     short_name: str = Field(..., min_length=1)
 
-class BrandCreateSchema(Schema):
-    brand_name: str = Field(..., min_length=1)
-
-class BrandUpdateSchema(Schema):
-    brand_name: str = Field(..., min_length=1)
-
-class TaxCreateSchema(Schema):
-    tax_name: str = Field(..., min_length=1)
-    tax_value: Decimal = Field(..., ge=0)
-
-class TaxUpdateSchema(Schema):
-    tax_name: str = Field(..., min_length=1)
-    tax_value: Decimal = Field(..., ge=0)
 
 class ItemIn(Schema):
     item_code: Optional[str] = None

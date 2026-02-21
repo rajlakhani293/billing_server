@@ -2,8 +2,10 @@ from django.db import models
 from django.core.exceptions import ValidationError
 from apps.core.models import IntegerModel, TimestampedModel
 from apps.parties.models import Party
-from apps.items.models import Item
 from apps.shops.models import Shop
+
+# Import Item model to avoid circular imports
+Item = None
 
 
 class Sales(IntegerModel, TimestampedModel):
@@ -71,7 +73,7 @@ class Sales(IntegerModel, TimestampedModel):
 
 class SalesTransaction(IntegerModel, TimestampedModel):
     sales = models.ForeignKey(Sales, on_delete=models.CASCADE, related_name='transactions', help_text='Parent invoice')
-    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='sales_transactions', help_text='Item sold')
+    item = models.ForeignKey('items.Item', on_delete=models.CASCADE, related_name='sales_transactions', help_text='Item sold')
     
     # Quantity and pricing
     item_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=1.00, help_text='Quantity sold')

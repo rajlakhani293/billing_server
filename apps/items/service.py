@@ -1,7 +1,7 @@
 from django.db import transaction
 from django.conf import settings
 from apps.core.helpers import ResponseBuilder, generate_sequential_code
-from .models import Item, ItemCategory, ItemUnit, Brand, Tax
+from .models import Item, ItemCategory, ItemUnit
 from apps.core.commonQuery import CommonQuery, uploadFile
 
 class ItemCategoryService:
@@ -233,129 +233,5 @@ class ItemService:
                 item['item_image'] = None
             
             return ResponseBuilder.success(data=item, message="Item retrieved successfully")
-        except Exception as e:
-            return ResponseBuilder.error(message=str(e), status_code=400)
-
-
-class BrandService:
-    @staticmethod
-    def create(data, request):
-        try:
-            with transaction.atomic():
-                brand = CommonQuery.createRecord(Brand, data, request)
-                return ResponseBuilder.success(
-                    data=brand,
-                    message="Brand created successfully"
-                )
-        except Exception as e:
-            return ResponseBuilder.error(message=str(e), status_code=400)
-
-    @staticmethod
-    def update(data, request, brand_id):
-        try:
-            with transaction.atomic():
-                brand = CommonQuery.updateRecordById(Brand, brand_id, data, request)
-                if not brand:
-                    raise Exception("Brand not found")
-                return ResponseBuilder.success(data=brand, message="Brand updated successfully")
-        except Exception as e:
-            return ResponseBuilder.error(message=str(e), status_code=400)
-
-    @staticmethod
-    def getAll(data, request):
-        try:
-            fieldConfig = [["brand_name", True, True]]
-            options = {'attributes': ['id', 'brand_name', 'status']}
-            result = CommonQuery.fetchPaginatedData(Brand, data, fieldConfig, options, request)
-            return ResponseBuilder.success(data=result, message="Brands retrieved successfully")
-        except Exception as e:
-            return ResponseBuilder.error(message=str(e), status_code=400)
-
-    @staticmethod
-    def dropdownList(request):
-        try:
-            brands = CommonQuery.findAllRecords(Brand, {}, {'attributes': ['id', 'brand_name'], 'order': ['brand_name']}, request)
-            return ResponseBuilder.success(data=brands, message="Dropdown list retrieved successfully")
-        except Exception as e:
-            return ResponseBuilder.error(message=str(e), status_code=400)
-            
-    @staticmethod
-    def delete(data, request):
-        try:
-            with transaction.atomic():
-                count = CommonQuery.softDeleteById(Brand, data.get('ids'), request)
-                if count == 0: raise Exception("Already deleted")
-                return ResponseBuilder.success(message="Brands deleted successfully")
-        except Exception as e:
-            return ResponseBuilder.error(message=str(e), status_code=400)
-
-    @staticmethod
-    def getById(brand_id, request):
-        try:
-            brand = CommonQuery.findOneRecord(Brand, brand_id, {}, request)
-            if not brand or brand.get('status') == 2: raise Exception("Brand not found")
-            return ResponseBuilder.success(data=brand, message="Brand retrieved successfully")
-        except Exception as e:
-            return ResponseBuilder.error(message=str(e), status_code=400)
-
-
-class TaxService:
-    @staticmethod
-    def create(data, request):
-        try:
-            with transaction.atomic():
-                tax = CommonQuery.createRecord(Tax, data, request)
-                return ResponseBuilder.success(
-                    data=tax,
-                    message="Tax created successfully"
-                )
-        except Exception as e:
-            return ResponseBuilder.error(message=str(e), status_code=400)
-
-    @staticmethod
-    def update(data, request, tax_id):
-        try:
-            with transaction.atomic():
-                tax = CommonQuery.updateRecordById(Tax, tax_id, data, request)
-                if not tax:
-                    raise Exception("Tax not found")
-                return ResponseBuilder.success(data=tax, message="Tax updated successfully")
-        except Exception as e:
-            return ResponseBuilder.error(message=str(e), status_code=400)
-
-    @staticmethod
-    def getAll(data, request):
-        try:
-            fieldConfig = [["tax_name", True, True], ["tax_value", True, True]]
-            options = {'attributes': ['id', 'tax_name', 'tax_value', 'status']}
-            result = CommonQuery.fetchPaginatedData(Tax, data, fieldConfig, options, request)
-            return ResponseBuilder.success(data=result, message="Taxes retrieved successfully")
-        except Exception as e:
-            return ResponseBuilder.error(message=str(e), status_code=400)
-
-    @staticmethod
-    def dropdownList(request):
-        try:
-            taxes = CommonQuery.findAllRecords(Tax, {}, {'attributes': ['id', 'tax_name', 'tax_value'], 'order': ['tax_name']}, request)
-            return ResponseBuilder.success(data=taxes, message="Dropdown list retrieved successfully")
-        except Exception as e:
-            return ResponseBuilder.error(message=str(e), status_code=400)
-            
-    @staticmethod
-    def delete(data, request):
-        try:
-            with transaction.atomic():
-                count = CommonQuery.softDeleteById(Tax, data.get('ids'), request)
-                if count == 0: raise Exception("Already deleted")
-                return ResponseBuilder.success(message="Taxes deleted successfully")
-        except Exception as e:
-            return ResponseBuilder.error(message=str(e), status_code=400)
-
-    @staticmethod
-    def getById(tax_id, request):
-        try:
-            tax = CommonQuery.findOneRecord(Tax, tax_id, {}, request)
-            if not tax or tax.get('status') == 2: raise Exception("Tax not found")
-            return ResponseBuilder.success(data=tax, message="Tax retrieved successfully")
         except Exception as e:
             return ResponseBuilder.error(message=str(e), status_code=400)

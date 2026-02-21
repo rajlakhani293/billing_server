@@ -10,7 +10,6 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('shops', '0005_alter_shop_city_alter_shop_country_alter_shop_state'),
-        ('items', '0001_initial'),
         ('parties', '0001_initial'),
     ]
 
