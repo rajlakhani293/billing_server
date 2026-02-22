@@ -1,7 +1,9 @@
 from django.contrib import admin
 from django.contrib.admin import ModelAdmin
+from django import forms
+from django.utils.safestring import mark_safe
+from django.db import models
 from .models import Item, ItemCategory, ItemUnit
-
 
 @admin.register(Item)
 class ItemAdmin(ModelAdmin):
@@ -13,7 +15,7 @@ class ItemAdmin(ModelAdmin):
     
     fieldsets = (
         ('Basic Information', {
-            'fields': ('item_code', 'item_name', 'category', 'item_image', 'description', 'shop')
+            'fields': ('item_code', 'item_name', 'category', 'item_image', 'item_images', 'description', 'shop')
         }),
         ('Pricing Information', {
             'fields': ('purchase_price', 'selling_price')
@@ -89,7 +91,7 @@ class ItemAdmin(ModelAdmin):
         if request.user.is_superuser:
             return True
         return hasattr(request.user, 'shops') and request.user.shops.exists()
-
+    
 
 @admin.register(ItemCategory)
 class ItemCategoryAdmin(ModelAdmin):

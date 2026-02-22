@@ -9,6 +9,7 @@ class ItemDropdownSchema(Schema):
     current_stock: Decimal
     selling_price: Decimal
     item_image: Optional[str] = None
+    item_images: Optional[list] = None
     
     class Config:
         from_attributes = True
@@ -41,12 +42,13 @@ class ItemIn(Schema):
     description: Optional[str] = None
     purchase_price: Optional[Decimal] = Decimal("0.00")
     selling_price: Decimal = Decimal("0.00")
-    tax: Optional[int] = None
+    tax_id: Optional[int] = None # Will map to tax_id
     hsn_code: Optional[str] = None
     opening_stock: Optional[Decimal] = Decimal("0.00")
     min_stock_level: Optional[Decimal] = Decimal("0.00")
     max_stock_level: Optional[Decimal] = Decimal("0.00")
     primary_unit_id: int
     item_weight: Optional[Decimal] = None
-    brand_id: Optional[int] = None
+    brand_id: Optional[int] = None # Will map to brand_id
     barcode: Optional[str] = None
+    item_images: Optional[str] = None # JSON string of images metadata

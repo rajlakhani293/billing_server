@@ -1,3 +1,4 @@
+from typing import List
 from ninja import Router, File, UploadedFile, Form
 from apps.core.auth import AuthBearer
 from .service import ItemService, ItemCategoryService, ItemUnitService
@@ -11,8 +12,8 @@ items_router = Router(tags=['Items'], auth=AuthBearer())
 
 
 @items_router.post("/")
-def create_item(request, payload: ItemIn = Form(...), item_image: UploadedFile = File(None)):
-    return ItemService.create(request, payload.dict(), item_image)
+def create_item(request, payload: ItemIn = Form(...)):
+    return ItemService.create(request, payload.dict())
 
 @items_router.delete('/delete')
 def delete(request, payload: DeleteSchema):

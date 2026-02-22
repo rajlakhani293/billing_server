@@ -128,17 +128,51 @@ class ItemUnitService:
 class ItemService:
     
     @staticmethod
-    def create(request, payload: dict, image_file=None):
+    def create(request, payload: dict):
         try:
             with transaction.atomic():
+                import json
 
-                if image_file:
-                    saved_files = uploadFile(image_file, subfolder="items")
-                    payload['item_image'] = saved_files.get('file')
+                # Handle multiple images metadata and files
+                item_images_metadata = payload.pop('item_images', None)
+                
+                item_images_final = []
+                
+                if item_images_metadata:
+                    try:
+                        metadata_list = json.loads(item_images_metadata)
+                        
+                        for i, meta in enumerate(metadata_list):
+                            key = meta.get('key')
+                            if key and key in request.FILES:
+                                file = request.FILES.get(key)
+                                saved = uploadFile(file, subfolder="items")
+                                file_url = next(iter(saved.values())) if saved else None
+                                
+                                if file_url:
+                                    item_images_final.append({
+                                        "url": file_url,
+                                        "sort_order": meta.get('sort_order', i),
+                                        "is_primary": meta.get('is_primary', False)
+                                    })
+                    except json.JSONDecodeError:
+                        pass
+                
+                if item_images_final:
+                    payload['item_images'] = item_images_final
+                
+                # Ignore legacy item_image field as requested
+                payload.pop('item_image', None)
                 
                 payload['item_code'] = generate_sequential_code(Item, 'item_code', 'IT')
 
                 item = CommonQuery.createRecord(Item, payload, request)
+                
+                # Post-process response to return absolute URIs
+                if item.get('item_images'):
+                    for img in item['item_images']:
+                        if img.get('url'):
+                            img['url'] = request.build_absolute_uri(settings.MEDIA_URL + str(img['url']))
 
                 return ResponseBuilder.success(
                     message="Item created successfully",
@@ -198,16 +232,23 @@ class ItemService:
             items = CommonQuery.findAllRecords(
                 Item, 
                 {},
-                {'attributes': ['id', 'item_name', 'item_code', 'current_stock', 'selling_price', 'item_image'], 'order': ['item_name']},
+                {'attributes': ['id', 'item_name', 'item_code', 'current_stock', 'selling_price', 'item_image', 'item_images'], 'order': ['item_name']},
                 request
             )
             
-            # Post-process to add full image URL
+            # Post-process to add full image URLs
             for item in items:
+                # Handle legacy single image
                 if item.get('item_image'):
                     item['item_image'] = request.build_absolute_uri(settings.MEDIA_URL + str(item['item_image']))
                 else:
                     item['item_image'] = None
+                
+                # Handle multiple images
+                if item.get('item_images'):
+                    for img in item['item_images']:
+                        if img.get('url'):
+                            img['url'] = request.build_absolute_uri(settings.MEDIA_URL + str(img['url']))
             
             return ResponseBuilder.success(
                 data=items,
@@ -226,11 +267,17 @@ class ItemService:
             item = CommonQuery.findOneRecord(Item, item_id, {}, request)
             if not item or item.get('status') == 2: raise Exception("Item not found")
             
-            # Add full image URL if item_image exists
+            # Add full image URL if item_image exists (legacy)
             if item.get('item_image'):
                 item['item_image'] = request.build_absolute_uri(settings.MEDIA_URL + str(item['item_image']))
             else:
                 item['item_image'] = None
+            
+            # Add full image URLs for multiple images
+            if item.get('item_images'):
+                for img in item['item_images']:
+                    if img.get('url'):
+                        img['url'] = request.build_absolute_uri(settings.MEDIA_URL + str(img['url']))
             
             return ResponseBuilder.success(data=item, message="Item retrieved successfully")
         except Exception as e:
