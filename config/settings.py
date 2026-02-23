@@ -56,7 +56,6 @@ INSTALLED_APPS = [
 
     'apps.accounts',
     'apps.shops',
-    'apps.parties',
     'apps.core',
     'apps.sales',
     'apps.items',
@@ -65,6 +64,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
+    'apps.core.middleware.PutPatchMultipartMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',

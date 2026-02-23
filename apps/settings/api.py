@@ -3,8 +3,8 @@ from ninja.router import Router
 from apps.accounts.auth_service import AuthService
 from apps.core.auth import AuthBearer
 from apps.core.schema import DeleteSchema
-from .schema import BrandCreateSchema, BrandUpdateSchema, TaxCreateSchema, TaxUpdateSchema
-from .service import BrandService, TaxService
+from .schema import BrandCreateSchema, BrandUpdateSchema, TaxCreateSchema, TaxUpdateSchema, PartyCreateSchema, PartyUpdateSchema
+from .service import BrandService, TaxService, PartyService
 
 
 setting_router = Router(tags=['Setting'])
@@ -83,3 +83,38 @@ def updateTax(request, tax_id: int, payload: TaxUpdateSchema):
 @setting_router.get('/taxes/{tax_id}')
 def getTaxById(request, tax_id: int):
     return TaxService.getById(tax_id, request)
+
+
+# ================================================================= ================================================================= =================================================================
+# Party CRUD APIs
+# ================================================================= ================================================================= =================================================================
+
+# Create Party
+@setting_router.post('/parties/')
+def create(request, payload: PartyCreateSchema):
+    return PartyService.create(payload.dict(), request)
+
+# Delete Parties
+@setting_router.delete('/parties/delete')
+def delete(request, payload: DeleteSchema):
+    return PartyService.delete(payload.dict(), request)
+
+# Get Dropdown
+@setting_router.get('/parties/dropdown-list')
+def dropdownList(request):
+    return PartyService.dropdownList(request)
+
+# Get All Parties
+@setting_router.post('/parties/get-transactions')
+def getAll(request, payload: dict = None):
+    return PartyService.getAll(payload, request)
+
+# Update Party
+@setting_router.put('/parties/{party_id}')
+def update(request, party_id: int, payload: PartyUpdateSchema):
+    return PartyService.update(payload.dict(), request, party_id)
+
+# Get Party by ID
+@setting_router.get('/parties/{party_id}')
+def getById(request, party_id: int):
+    return PartyService.getById(party_id, request)

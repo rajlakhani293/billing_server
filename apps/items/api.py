@@ -3,7 +3,8 @@ from ninja import Router, File, UploadedFile, Form
 from apps.core.auth import AuthBearer
 from .service import ItemService, ItemCategoryService, ItemUnitService
 from apps.core.schema import DeleteSchema
-from .schema import ItemCategoryCreateSchema, ItemCategoryUpdateSchema, ItemUnitUpdateSchema, ItemUnitCreateSchema, ItemIn
+from .schema import ItemCategoryCreateSchema, ItemCategoryUpdateSchema, ItemUnitUpdateSchema, ItemUnitCreateSchema, ItemIn, ItemUpdateSchema
+from apps.core.helpers import parse_multipart_request
 
 # ================================================================= ================================================================= =================================================================
 # Items CRUD APIs
@@ -30,6 +31,11 @@ def dropdownList(request):
 @items_router.get('/{item_id}')
 def getItemById(request, item_id: int):
     return ItemService.getById(item_id, request)
+
+@items_router.put("/{item_id}")
+def update_item(request, item_id: int, payload: ItemUpdateSchema = Form(...)):
+    request = parse_multipart_request(request)
+    return ItemService.update(request, item_id, payload.dict())
 
 # ================================================================= ================================================================= =================================================================
 # Item Category CRUD APIs

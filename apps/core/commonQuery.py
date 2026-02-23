@@ -217,6 +217,8 @@ class CommonQuery:
                 setattr(obj, key, value)
         
         obj.save()
+        obj.refresh_from_db()
+        
         return serializeModelInstance(obj)
 
     @staticmethod

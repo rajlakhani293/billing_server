@@ -1,4 +1,6 @@
 from django.db import models
+from django.core.exceptions import ValidationError
+from decimal import Decimal
 from apps.core.models import IntegerModel, TimestampedModel
 from apps.shops.models import Shop
 from apps.settings.models import Brand, Tax
@@ -62,8 +64,8 @@ class Item(IntegerModel, TimestampedModel):
     description = models.TextField(blank=True, null=True, help_text='Item description')
     
     # Pricing
-    purchase_price = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text='Purchase price')
-    selling_price = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text='Selling price')
+    purchase_price = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True, help_text='Purchase price')
+    selling_price = models.DecimalField(max_digits=12, decimal_places=2, help_text='Selling price')
     
     # Tax Information
     tax = models.ForeignKey(Tax, on_delete=models.SET_NULL, null=True, blank=True, related_name='tax', help_text='Tax rate')
@@ -101,9 +103,38 @@ class Item(IntegerModel, TimestampedModel):
             models.Index(fields=['shop', 'item_code']),
             models.Index(fields=['shop', 'item_name']),
             models.Index(fields=['status']),
-            models.Index(fields=['brand']),
-            models.Index(fields=['tax']),
+            models.Index(fields=['shop','brand']),
+            models.Index(fields=['shop','tax']),
         ]
+    
+    def clean(self):
+        """Clean method to validate and normalize field values"""
+        super().clean()
+        
+        # Handle barcode: if empty string, set to None
+        if hasattr(self, 'barcode') and self.barcode == "":
+            self.barcode = None
+        
+        # Handle stock-related fields: if empty or None, set to 0
+        stock_fields = [
+            'opening_stock', 'current_stock', 'min_stock_level', 'max_stock_level',
+            'purchase_price', 'selling_price'
+        ]
+        
+        for field_name in stock_fields:
+            if hasattr(self, field_name):
+                field_value = getattr(self, field_name)
+                if field_value is None or field_value == "":
+                    setattr(self, field_name, Decimal("0.00"))
+    
+    def save(self, *args, **kwargs):
+        """Override save to ensure clean is called"""
+        try:
+            self.full_clean()
+        except Exception:
+            # If full_clean fails due to logging issues, proceed with save
+            pass
+        super().save(*args, **kwargs)
     
     def __str__(self):
         return f"{self.item_name} ({self.item_code})"

@@ -1,7 +1,7 @@
 from django.db import models
 from django.core.exceptions import ValidationError
 from apps.core.models import IntegerModel, TimestampedModel
-from apps.parties.models import Party
+from apps.settings.models import Party
 from apps.shops.models import Shop
 
 # Import Item model to avoid circular imports

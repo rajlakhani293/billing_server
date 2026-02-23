@@ -3,6 +3,8 @@ from django.conf import settings
 from apps.core.helpers import ResponseBuilder, generate_sequential_code
 from .models import Item, ItemCategory, ItemUnit
 from apps.core.commonQuery import CommonQuery, uploadFile
+from apps.core.constants import ITEM_IMG_FOLDER, ITEM_CODE_PREFIX
+import json
 
 class ItemCategoryService:
     @staticmethod
@@ -144,38 +146,145 @@ class ItemService:
                         
                         for i, meta in enumerate(metadata_list):
                             key = meta.get('key')
+                            url = meta.get('url')
+                            is_primary = meta.get('is_primary', False)
+                            sort_order = meta.get('sort_order', i)
+                            
+                            # Case 1: New Upload (has key in request.FILES)
                             if key and key in request.FILES:
                                 file = request.FILES.get(key)
-                                saved = uploadFile(file, subfolder="items")
+                                saved = uploadFile(file, subfolder=ITEM_IMG_FOLDER.rstrip('/'))
                                 file_url = next(iter(saved.values())) if saved else None
                                 
                                 if file_url:
                                     item_images_final.append({
-                                        "url": file_url,
-                                        "sort_order": meta.get('sort_order', i),
-                                        "is_primary": meta.get('is_primary', False)
+                                        "url": f"{ITEM_IMG_FOLDER.rstrip('/')}/{file_url}",
+                                        "sort_order": sort_order,
+                                        "is_primary": is_primary
                                     })
-                    except json.JSONDecodeError:
+                            
+                            # Case 2: Existing Image (has url)
+                            elif url:
+                                # Standardize the URL by removing absolute part if present
+                                if settings.MEDIA_URL in url:
+                                    url = url.split(settings.MEDIA_URL)[-1]
+                                
+                                item_images_final.append({
+                                    "url": url,
+                                    "sort_order": sort_order,
+                                    "is_primary": is_primary
+                                })
+                    except (json.JSONDecodeError, TypeError):
                         pass
                 
-                if item_images_final:
+                if item_images_metadata is not None:
                     payload['item_images'] = item_images_final
                 
                 # Ignore legacy item_image field as requested
                 payload.pop('item_image', None)
                 
-                payload['item_code'] = generate_sequential_code(Item, 'item_code', 'IT')
+                # Map tax and brand to _id fields for Django compatibility
+                if 'tax' in payload: payload['tax_id'] = payload.pop('tax')
+                if 'brand' in payload: payload['brand_id'] = payload.pop('brand')
+                
+                payload['item_code'] = generate_sequential_code(Item, 'item_code', ITEM_CODE_PREFIX)
 
                 item = CommonQuery.createRecord(Item, payload, request)
+                
+                # Handle multiple images
+                if item.get('item_images'):
+                    for img in item['item_images']:
+                        if img.get('url'):
+                            url = str(img['url'])
+                            if not url.startswith(ITEM_IMG_FOLDER.rstrip('/')):
+                                url = f"{ITEM_IMG_FOLDER.rstrip('/')}/{url}"
+                            img['url'] = request.build_absolute_uri(settings.MEDIA_URL + url)
+
+                return ResponseBuilder.success(
+                    message="Item created successfully",
+                    data=item
+                )
+        except Exception as e:
+            return ResponseBuilder.error(str(e))
+
+    @staticmethod
+    def update(request, item_id: int, payload: dict):
+        try:
+            with transaction.atomic():
+
+                # Handle multiple images metadata and files
+                item_images_metadata = payload.pop('item_images', None)
+                
+                item_images_final = []
+                
+                if item_images_metadata:
+                    try:
+                        metadata_list = json.loads(item_images_metadata)
+                        
+                        for i, meta in enumerate(metadata_list):
+                            key = meta.get('key')
+                            url = meta.get('url')
+                            
+                            is_primary = meta.get('is_primary', False)
+                            sort_order = meta.get('sort_order', i)
+                            
+                            found = False
+                            # Case 1: New Upload (has key in request.FILES)
+                            if key and key in request.FILES:
+                                file = request.FILES.get(key)
+                                saved = uploadFile(file, subfolder=ITEM_IMG_FOLDER.rstrip('/'))
+                                file_url = next(iter(saved.values())) if saved else None
+                                
+                                if file_url:
+                                    item_images_final.append({
+                                        "url": f"{ITEM_IMG_FOLDER.rstrip('/')}/{file_url}",
+                                        "sort_order": sort_order,
+                                        "is_primary": is_primary
+                                    })
+                                    found = True
+                            
+                            # Case 2: Existing Image (has url)
+                            if not found and url:
+                                # Standardize the URL by removing absolute part if present
+                                if settings.MEDIA_URL in url:
+                                    url = url.split(settings.MEDIA_URL)[-1]
+                                
+                                item_images_final.append({
+                                    "url": url,
+                                    "sort_order": sort_order,
+                                    "is_primary": is_primary
+                                })
+                                found = True
+                            
+                            if not found:
+                                pass
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                
+                if item_images_metadata is not None:
+                    payload['item_images'] = item_images_final
+                
+                payload.pop('item_image', None)
+                
+                # Map tax and brand to _id fields for Django compatibility
+                if 'tax' in payload: payload['tax_id'] = payload.pop('tax')
+                if 'brand' in payload: payload['brand_id'] = payload.pop('brand')
+                
+                item = CommonQuery.updateRecordById(Item, item_id, payload, request)
+                if not item:
+                    raise Exception("Item not found")
                 
                 # Post-process response to return absolute URIs
                 if item.get('item_images'):
                     for img in item['item_images']:
                         if img.get('url'):
-                            img['url'] = request.build_absolute_uri(settings.MEDIA_URL + str(img['url']))
+                            url = str(img['url'])
+                            if not url.startswith(ITEM_IMG_FOLDER.rstrip('/')):
+                                url = f"{ITEM_IMG_FOLDER.rstrip('/')}/{url}"
+                            img['url'] = request.build_absolute_uri(settings.MEDIA_URL + url)
 
                 return ResponseBuilder.success(
-                    message="Item created successfully",
+                    message="Item updated successfully",
                     data=item
                 )
         except Exception as e:
@@ -210,11 +319,29 @@ class ItemService:
                 ['category', False, True],
                 ["brand", False, True],
             ]
-                
+
+            options = {
+                'attributes': [
+                    "id",
+                    "item_code",
+                    "item_name",
+                    "category__category_name",
+                    "current_stock",
+                    "selling_price",
+                    "brand__brand_name",
+                    "status"
+                ]
+            }
+
             result = CommonQuery.fetchPaginatedData(
-                Item, data, fieldConfig, {}, request
+                Item, data, fieldConfig, options, request
             )
             
+            # Post-process to rename keys for a cleaner response
+            for item in result.get('items', []):
+                item['category'] = item.pop('category__category_name', None)
+                item['brand'] = item.pop('brand__brand_name', None)
+
             return ResponseBuilder.success(
                 data=result,
                 message="Items retrieved successfully"
@@ -248,7 +375,10 @@ class ItemService:
                 if item.get('item_images'):
                     for img in item['item_images']:
                         if img.get('url'):
-                            img['url'] = request.build_absolute_uri(settings.MEDIA_URL + str(img['url']))
+                            url = str(img['url'])
+                            if not url.startswith(ITEM_IMG_FOLDER.rstrip('/')):
+                                url = f"{ITEM_IMG_FOLDER.rstrip('/')}/{url}"
+                            img['url'] = request.build_absolute_uri(settings.MEDIA_URL + url)
             
             return ResponseBuilder.success(
                 data=items,
@@ -277,7 +407,10 @@ class ItemService:
             if item.get('item_images'):
                 for img in item['item_images']:
                     if img.get('url'):
-                        img['url'] = request.build_absolute_uri(settings.MEDIA_URL + str(img['url']))
+                        url = str(img['url'])
+                        if not url.startswith(ITEM_IMG_FOLDER.rstrip('/')):
+                            url = f"{ITEM_IMG_FOLDER.rstrip('/')}/{url}"
+                        img['url'] = request.build_absolute_uri(settings.MEDIA_URL + url)
             
             return ResponseBuilder.success(data=item, message="Item retrieved successfully")
         except Exception as e:

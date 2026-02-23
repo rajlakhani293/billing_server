@@ -7,7 +7,6 @@ from ninja.errors import ValidationError
 from apps.accounts.api import auth_router
 from apps.core.api import location_router
 from apps.core.helpers import validation_error_handler
-from apps.parties.api import parties_router
 from apps.items.api import items_router
 from apps.sales.api import sales_router
 from apps.settings.api import setting_router
@@ -23,7 +22,6 @@ api.add_exception_handler(ValidationError, validation_error_handler)
 
 # Add routers
 api.add_router('/auth', auth_router)
-api.add_router('/parties', parties_router)
 api.add_router('/locations', location_router)
 api.add_router('/items', items_router)
 api.add_router('/sales', sales_router)

@@ -1,6 +1,7 @@
 from ninja import Field, Schema
-from typing import Optional
+from typing import Optional, Any
 from decimal import Decimal
+from pydantic import field_validator
 
 class ItemDropdownSchema(Schema):
     id: int
@@ -42,13 +43,38 @@ class ItemIn(Schema):
     description: Optional[str] = None
     purchase_price: Optional[Decimal] = Decimal("0.00")
     selling_price: Decimal = Decimal("0.00")
-    tax_id: Optional[int] = None # Will map to tax_id
+    tax: int
     hsn_code: Optional[str] = None
     opening_stock: Optional[Decimal] = Decimal("0.00")
     min_stock_level: Optional[Decimal] = Decimal("0.00")
     max_stock_level: Optional[Decimal] = Decimal("0.00")
     primary_unit_id: int
     item_weight: Optional[Decimal] = None
-    brand_id: Optional[int] = None # Will map to brand_id
+    brand: Optional[int] = None
     barcode: Optional[str] = None
-    item_images: Optional[str] = None # JSON string of images metadata
+    item_images: Optional[str] = None 
+
+class ItemUpdateSchema(Schema):
+    item_code: str
+    item_name: str = Field(..., min_length=1)
+    category_id: int
+    description: Optional[str] = None
+    purchase_price: Optional[Decimal] = None
+    selling_price: Decimal = Decimal("0.00")
+    tax: int
+    hsn_code: Optional[str] = None
+    opening_stock: Optional[Decimal] = None
+    min_stock_level: Optional[Decimal] = None
+    max_stock_level: Optional[Decimal] = None
+    primary_unit_id: int
+    item_weight: Optional[Decimal] = None
+    brand: Optional[int] = None
+    barcode: Optional[str] = None
+    item_images: Optional[str] = None
+
+    @field_validator('purchase_price', 'item_weight', 'selling_price', 'opening_stock', 'min_stock_level', 'max_stock_level', mode='before')
+    @classmethod
+    def empty_string_to_zero(cls, v: Any) -> Any:
+        if v == "" or v is None:
+            return Decimal("0.00")
+        return v

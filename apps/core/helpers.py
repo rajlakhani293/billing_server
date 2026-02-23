@@ -7,6 +7,28 @@ import pyotp
 from ninja.errors import ValidationError, HttpError
 from django.http import JsonResponse
 import datetime
+from django.http.multipartparser import MultiPartParser
+from django.http.request import QueryDict
+
+
+def parse_multipart_request(request):
+    """
+    Manually parse multipart form data for PUT/PATCH requests.
+    Django only does this automatically for POST.
+    """
+    if request.method in ['PUT', 'PATCH'] and request.content_type.startswith('multipart/form-data'):
+        # If files/post are already populated, don't re-parse
+        if hasattr(request, '_files') and request._files:
+            return request
+        if hasattr(request, '_post') and request._post:
+            return request
+            
+        # Initializing the parser with the request meta and stream
+        parser = MultiPartParser(request.META, request.environ['wsgi.input'], request.upload_handlers, request.encoding)
+        post, files = parser.parse()
+        request._post = post
+        request._files = files
+    return request
 
 
 def check_recent_verification(phone_number: str) -> dict:
