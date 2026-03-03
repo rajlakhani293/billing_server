@@ -43,8 +43,30 @@ class ItemCategoryService:
     @staticmethod
     def dropdownList(request):
         try:
-            categories = CommonQuery.findAllRecords(ItemCategory, {}, {'attributes': ['id', 'category_name'], 'order': ['category_name']}, request)
-            return ResponseBuilder.success(data=categories, message="Dropdown list retrieved successfully")
+            from django.db.models import Count, Q
+            
+            # Get categories with item counts using CommonQuery approach
+            categories_with_counts = CommonQuery.findAllRecords(
+                ItemCategory, 
+                {}, 
+                {
+                    'attributes': ['id', 'category_name'], 
+                    'order': ['category_name']
+                }, 
+                request
+            )
+            
+            # Get item counts for each category using CommonQuery
+            for category in categories_with_counts:
+                item_count = CommonQuery.findAllRecords(
+                    Item,
+                    {'category': category['id'], 'status': 0},
+                    {'attributes': ['id']},
+                    request
+                )
+                category['item_count'] = len(item_count)
+            
+            return ResponseBuilder.success(data=categories_with_counts, message="Dropdown list retrieved successfully")
         except Exception as e:
             return ResponseBuilder.error(message=str(e), status_code=400)
             
@@ -182,13 +204,8 @@ class ItemService:
                 
                 # Ignore legacy item_image field as requested
                 payload.pop('item_image', None)
-                
-                # Map tax and brand to _id fields for Django compatibility
-                if 'tax' in payload: payload['tax_id'] = payload.pop('tax')
                 if 'brand' in payload: payload['brand_id'] = payload.pop('brand')
-                
                 payload['item_code'] = generate_sequential_code(Item, 'item_code', ITEM_CODE_PREFIX)
-
                 item = CommonQuery.createRecord(Item, payload, request)
                 
                 # Handle multiple images
@@ -266,8 +283,6 @@ class ItemService:
                 
                 payload.pop('item_image', None)
                 
-                # Map tax and brand to _id fields for Django compatibility
-                if 'tax' in payload: payload['tax_id'] = payload.pop('tax')
                 if 'brand' in payload: payload['brand_id'] = payload.pop('brand')
                 
                 item = CommonQuery.updateRecordById(Item, item_id, payload, request)
@@ -317,7 +332,7 @@ class ItemService:
                 ["item_name", True, True],
                 ["item_code", True, True],
                 ['category', False, True],
-                ["brand", False, True],
+                ["brand", False, False],
             ]
 
             options = {
@@ -325,11 +340,14 @@ class ItemService:
                     "id",
                     "item_code",
                     "item_name",
+                    "item_weight",
                     "category__category_name",
+                    "primary_unit__short_name",
                     "current_stock",
                     "selling_price",
                     "brand__brand_name",
-                    "status"
+                    "status",
+                    "item_images"
                 ]
             }
 
@@ -337,10 +355,28 @@ class ItemService:
                 Item, data, fieldConfig, options, request
             )
             
-            # Post-process to rename keys for a cleaner response
+            # Post-process to rename keys for a cleaner response and process images
             for item in result.get('items', []):
                 item['category'] = item.pop('category__category_name', None)
                 item['brand'] = item.pop('brand__brand_name', None)
+                item['unit'] = item.pop('primary_unit__short_name', None)
+
+                
+                # Filter item_images to only include primary image (is_primary: true)
+                if item.get('item_images'):
+                    primary_images = [img for img in item['item_images'] if img.get('is_primary') == True]
+                    
+                    # Convert relative URLs to absolute URLs for primary images
+                    for img in primary_images:
+                        if img.get('url'):
+                            url = str(img['url'])
+                            if not url.startswith(ITEM_IMG_FOLDER.rstrip('/')):
+                                url = f"{ITEM_IMG_FOLDER.rstrip('/')}/{url}"
+                            img['url'] = request.build_absolute_uri(settings.MEDIA_URL + url)
+                    
+                    item['item_images'] = primary_images
+                else:
+                    item['item_images'] = []
 
             return ResponseBuilder.success(
                 data=result,
@@ -359,26 +395,29 @@ class ItemService:
             items = CommonQuery.findAllRecords(
                 Item, 
                 {},
-                {'attributes': ['id', 'item_name', 'item_code', 'current_stock', 'selling_price', 'item_image', 'item_images'], 'order': ['item_name']},
+                {'attributes': ['id', 'item_name', 'item_code', 'primary_unit__short_name', 'selling_price', 'current_stock', 'description', 'item_images'], 'order': ['item_name']},
                 request
             )
-            
-            # Post-process to add full image URLs
+
+            # Post-process to rename keys for a cleaner response and filter primary images
             for item in items:
-                # Handle legacy single image
-                if item.get('item_image'):
-                    item['item_image'] = request.build_absolute_uri(settings.MEDIA_URL + str(item['item_image']))
-                else:
-                    item['item_image'] = None
+                item['unit'] = item.pop('primary_unit__short_name', None)
                 
-                # Handle multiple images
+                # Filter item_images to only include primary image (is_primary: true)
                 if item.get('item_images'):
-                    for img in item['item_images']:
+                    primary_images = [img for img in item['item_images'] if img.get('is_primary') == True]
+                    
+                    # Convert relative URLs to absolute URLs for primary images
+                    for img in primary_images:
                         if img.get('url'):
                             url = str(img['url'])
                             if not url.startswith(ITEM_IMG_FOLDER.rstrip('/')):
                                 url = f"{ITEM_IMG_FOLDER.rstrip('/')}/{url}"
                             img['url'] = request.build_absolute_uri(settings.MEDIA_URL + url)
+                    
+                    item['item_images'] = primary_images
+                else:
+                    item['item_images'] = []
             
             return ResponseBuilder.success(
                 data=items,

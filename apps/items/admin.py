@@ -15,16 +15,13 @@ class ItemAdmin(ModelAdmin):
     
     fieldsets = (
         ('Basic Information', {
-            'fields': ('item_code', 'item_name', 'category', 'item_image', 'item_images', 'description', 'shop')
+            'fields': ('item_code', 'item_name', 'category', 'item_images', 'description', 'shop')
         }),
         ('Pricing Information', {
             'fields': ('purchase_price', 'selling_price')
         }),
-        ('Tax Information', {
-            'fields': ('tax', 'hsn_code')
-        }),
         ('Inventory Management', {
-            'fields': ('opening_stock', 'current_stock', 'min_stock_level', 'max_stock_level')
+            'fields': ('opening_stock', 'current_stock', 'min_stock_level')
         }),
         ('Units and Measurements', {
             'fields': ('primary_unit', 'item_weight')

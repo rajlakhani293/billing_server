@@ -463,7 +463,9 @@ class CommonQuery:
                 "hasPreviousPage": False if is_fetch_all else page > 1,
                 "appliedFilters": {
                     **req_body, 
-                    "filtersCount": len(req_filters) if req_filters else 0 
+                    "filtersCount": len(req_filters) if req_filters else 0,
+                    "searchFields": [f['key'] for f in allowed_searchable],
+                    "sortableFields": sortable_keys
                 }
             }
 

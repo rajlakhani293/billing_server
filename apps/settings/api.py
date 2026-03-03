@@ -7,10 +7,10 @@ from .schema import BrandCreateSchema, BrandUpdateSchema, TaxCreateSchema, TaxUp
 from .service import BrandService, TaxService, PartyService
 
 
-setting_router = Router(tags=['Setting'])
+setting_router = Router(tags=['Setting'], auth=AuthBearer())
 
 # Session Data
-@setting_router.get('/session-data', auth=AuthBearer())
+@setting_router.get('/session-data')
 def session_data(request):
     return AuthService.get_session_data(request)
 

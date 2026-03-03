@@ -1,5 +1,5 @@
 from ninja import Field, Schema
-from typing import Optional, Any
+from typing import Optional, Union
 from decimal import Decimal
 from pydantic import field_validator
 
@@ -41,40 +41,88 @@ class ItemIn(Schema):
     item_name: str = Field(..., min_length=1)
     category_id: int
     description: Optional[str] = None
-    purchase_price: Optional[Decimal] = Decimal("0.00")
+    purchase_price: Optional[Union[str, Decimal]] = None
     selling_price: Decimal = Decimal("0.00")
-    tax: int
-    hsn_code: Optional[str] = None
-    opening_stock: Optional[Decimal] = Decimal("0.00")
-    min_stock_level: Optional[Decimal] = Decimal("0.00")
-    max_stock_level: Optional[Decimal] = Decimal("0.00")
+    opening_stock: Optional[Union[str, Decimal]] = Decimal("0.00")
+    min_stock_level: Optional[Union[str, Decimal]] = Decimal("0.00")
     primary_unit_id: int
-    item_weight: Optional[Decimal] = None
-    brand: Optional[int] = None
+    item_weight: Optional[Union[str, Decimal]] = None
+    brand: Optional[Union[str, int]] = None
     barcode: Optional[str] = None
-    item_images: Optional[str] = None 
+    item_images: Optional[str] = None
+
+    @field_validator('purchase_price', 'item_weight', 'barcode', mode='before')
+    @classmethod
+    def validate_decimal_fields(cls, v):
+        if v == "" or v is None:
+            return None
+        try:
+            return Decimal(str(v))
+        except (ValueError, TypeError):
+            raise ValueError("Value must be a valid decimal number")
+
+    @field_validator('opening_stock', 'min_stock_level', mode='before')
+    @classmethod
+    def validate_stock_fields(cls, v):
+        if v == "" or v is None:
+            return Decimal("0.00")
+        try:
+            return Decimal(str(v))
+        except (ValueError, TypeError):
+            raise ValueError("Value must be a valid decimal number")
+
+    @field_validator('brand', mode='before')
+    @classmethod
+    def validate_brand(cls, v):
+        if v == "" or v is None:
+            return None
+        try:
+            return int(v)
+        except (ValueError, TypeError):
+            raise ValueError("Brand must be a valid integer")
 
 class ItemUpdateSchema(Schema):
     item_code: str
     item_name: str = Field(..., min_length=1)
     category_id: int
     description: Optional[str] = None
-    purchase_price: Optional[Decimal] = None
+    purchase_price: Optional[Union[str, Decimal]] = None
     selling_price: Decimal = Decimal("0.00")
-    tax: int
-    hsn_code: Optional[str] = None
-    opening_stock: Optional[Decimal] = None
-    min_stock_level: Optional[Decimal] = None
-    max_stock_level: Optional[Decimal] = None
+    opening_stock: Optional[Union[str, Decimal]] = Decimal("0.00")
+    min_stock_level: Optional[Union[str, Decimal]] = Decimal("0.00")
     primary_unit_id: int
-    item_weight: Optional[Decimal] = None
-    brand: Optional[int] = None
+    item_weight: Optional[Union[str, Decimal]] = None
+    brand: Optional[Union[str, int]] = None
     barcode: Optional[str] = None
     item_images: Optional[str] = None
 
-    @field_validator('purchase_price', 'item_weight', 'selling_price', 'opening_stock', 'min_stock_level', 'max_stock_level', mode='before')
+    @field_validator('purchase_price', 'item_weight', 'barcode', mode='before')
     @classmethod
-    def empty_string_to_zero(cls, v: Any) -> Any:
+    def validate_decimal_fields(cls, v):
+        if v == "" or v is None:
+            return None
+        try:
+            return Decimal(str(v))
+        except (ValueError, TypeError):
+            raise ValueError("Value must be a valid decimal number")
+
+    @field_validator('opening_stock', 'min_stock_level', mode='before')
+    @classmethod
+    def validate_stock_fields(cls, v):
         if v == "" or v is None:
             return Decimal("0.00")
-        return v
+        try:
+            return Decimal(str(v))
+        except (ValueError, TypeError):
+            raise ValueError("Value must be a valid decimal number")
+
+    @field_validator('brand', mode='before')
+    @classmethod
+    def validate_brand(cls, v):
+        if v == "" or v is None:
+            return None
+        try:
+            return int(v)
+        except (ValueError, TypeError):
+            raise ValueError("Brand must be a valid integer")
+

@@ -161,12 +161,16 @@ class PartyService:
             # Field configuration: [field_name, is_searchable, is_sortable]
             fieldConfig = [
                 ["name", True, True],
-                ["phone_number", True, True],
+                ["phone_number", True, False],
                 ["email", True, True],
                 ["party_type", False, True],
             ]
+
+            option = {
+                'attributes': ['id', 'name', 'phone_number', 'email', 'party_type','customer_category','status']
+            }
             
-            result = CommonQuery.fetchPaginatedData(Party, data, fieldConfig, None, request)
+            result = CommonQuery.fetchPaginatedData(Party, data, fieldConfig, option, request)
             return ResponseBuilder.success(data=result, message="Parties retrieved successfully")
         except Exception as e:
             return ResponseBuilder.error(message=str(e), status_code=400)
