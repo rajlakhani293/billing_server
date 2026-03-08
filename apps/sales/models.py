@@ -33,6 +33,7 @@ class Sales(IntegerModel, TimestampedModel):
     # Additional details
     sales_date = models.DateTimeField(help_text='Date of invoice')
     notes = models.TextField(blank=True, null=True, help_text='Additional notes')
+    is_reverted = models.BooleanField(default=False, help_text='True when full sales invoice is reverted')
     status = models.IntegerField(default=0, help_text='0: Active, 1: Inactive, 2: Deleted')
     shop = models.ForeignKey(Shop, on_delete=models.CASCADE, related_name='sales', help_text='Shop')
     
@@ -77,6 +78,7 @@ class SalesTransaction(IntegerModel, TimestampedModel):
     
     # Quantity and pricing
     item_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=1.00, help_text='Quantity sold')
+    returned_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, help_text='Quantity returned')
     item_rate = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text='Price per unit at time of sale')
     item_description = models.CharField(max_length=255, help_text='Item Description')
     discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0.00, help_text='Discount percentage')
@@ -107,3 +109,59 @@ class SalesTransaction(IntegerModel, TimestampedModel):
         if self.item_rate < 0:
             raise ValidationError('Unit price cannot be negative.')
 
+        if self.returned_quantity < 0:
+            raise ValidationError('Returned quantity cannot be negative.')
+
+        if self.returned_quantity > self.item_quantity:
+            raise ValidationError('Returned quantity cannot exceed sold quantity.')
+
+
+class SalesReturn(IntegerModel, TimestampedModel):
+    return_code = models.CharField(max_length=50, unique=True, help_text='Unique sales return number')
+    sales = models.ForeignKey(Sales, on_delete=models.CASCADE, related_name='returns', help_text='Original sales invoice')
+    return_date = models.DateTimeField(auto_now_add=True, help_text='Return created time')
+    total_return_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text='Total return amount')
+    notes = models.TextField(blank=True, null=True, help_text='Return notes')
+    status = models.IntegerField(default=0, help_text='0: Active, 1: Inactive, 2: Deleted')
+    shop = models.ForeignKey(Shop, on_delete=models.CASCADE, related_name='sales_returns', help_text='Shop')
+
+    class Meta:
+        db_table = 'sales_returns'
+        verbose_name = 'Sales Return'
+        verbose_name_plural = 'Sales Returns'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['shop', 'return_date']),
+            models.Index(fields=['sales', 'status']),
+            models.Index(fields=['return_code']),
+        ]
+        unique_together = [
+            ['shop', 'return_code']
+        ]
+
+    def __str__(self):
+        return f"Sales Return {self.return_code} - Sales {self.sales.sales_code}"
+
+
+class SalesReturnTransaction(IntegerModel, TimestampedModel):
+    sales_return = models.ForeignKey(SalesReturn, on_delete=models.CASCADE, related_name='transactions', help_text='Sales return header')
+    sales_transaction = models.ForeignKey(SalesTransaction, on_delete=models.CASCADE, related_name='return_transactions', help_text='Original sales line')
+    item = models.ForeignKey('items.Item', on_delete=models.CASCADE, related_name='sales_return_transactions', help_text='Returned item')
+    return_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, help_text='Returned quantity')
+    item_rate = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text='Item rate at sale time')
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text='Return amount for this line')
+    status = models.IntegerField(default=0, help_text='0: Active, 1: Inactive, 2: Deleted')
+    shop = models.ForeignKey(Shop, on_delete=models.CASCADE, related_name='sales_return_transactions', help_text='Shop')
+
+    class Meta:
+        db_table = 'sales_return_transactions'
+        verbose_name = 'Sales Return Transaction'
+        verbose_name_plural = 'Sales Return Transactions'
+        ordering = ['created_at']
+        indexes = [
+            models.Index(fields=['sales_return', 'item']),
+            models.Index(fields=['sales_transaction']),
+        ]
+
+    def __str__(self):
+        return f"{self.item.item_name} - Return {self.sales_return.return_code}"

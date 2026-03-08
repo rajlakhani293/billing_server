@@ -100,3 +100,47 @@ class Item(IntegerModel, TimestampedModel):
     
     def __str__(self):
         return f"{self.item_name} ({self.item_code})"
+
+
+class StockLedger(IntegerModel, TimestampedModel):
+    MOVEMENT_TYPES = [
+        ("OPENING_STOCK", "Opening Stock"),
+        ("NEW_STOCK", "New Stock"),
+        ("SALE_STOCK", "Sale Stock"),
+        ("RETURN_STOCK", "Return Stock"),
+        ("DAMAGED_STOCK", "Damaged Stock"),
+        ("USED_STOCK", "Used Stock"),
+        ("ADJUSTMENT_IN", "Adjustment In"),
+        ("ADJUSTMENT_OUT", "Adjustment Out"),
+    ]
+
+    DIRECTION_CHOICES = [
+        ("IN", "In"),
+        ("OUT", "Out"),
+    ]
+
+    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name="stock_ledger_entries")
+    movement_type = models.CharField(max_length=30, choices=MOVEMENT_TYPES)
+    direction = models.CharField(max_length=3, choices=DIRECTION_CHOICES)
+    quantity = models.DecimalField(max_digits=12, decimal_places=2, help_text="Moved quantity")
+    balance_after = models.DecimalField(max_digits=12, decimal_places=2, help_text="Stock after movement")
+    reference_type = models.CharField(max_length=50, blank=True, null=True, help_text="Source document type")
+    reference_id = models.IntegerField(blank=True, null=True, help_text="Source document ID")
+    note = models.TextField(blank=True, null=True)
+    status = models.IntegerField(default=0, help_text="0: Active, 1: Inactive, 2: Deleted")
+    shop = models.ForeignKey(Shop, on_delete=models.CASCADE, related_name="stock_ledger_entries")
+
+    class Meta:
+        db_table = "stock_ledger"
+        verbose_name = "Stock Ledger"
+        verbose_name_plural = "Stock Ledger"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["shop", "item", "created_at"]),
+            models.Index(fields=["movement_type", "created_at"]),
+            models.Index(fields=["reference_type", "reference_id"]),
+            models.Index(fields=["status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.item.item_name} - {self.movement_type} ({self.quantity})"

@@ -3,7 +3,7 @@ from django.contrib.admin import ModelAdmin
 from django import forms
 from django.utils.safestring import mark_safe
 from django.db import models
-from .models import Item, ItemCategory, ItemUnit
+from .models import Item, ItemCategory, ItemUnit, StockLedger
 
 @admin.register(Item)
 class ItemAdmin(ModelAdmin):
@@ -234,3 +234,17 @@ class ItemUnitAdmin(ModelAdmin):
         if request.user.is_superuser:
             return True
         return hasattr(request.user, 'shops') and request.user.shops.exists()
+
+
+@admin.register(StockLedger)
+class StockLedgerAdmin(ModelAdmin):
+    list_display = ["id", "item", "movement_type", "direction", "quantity", "balance_after", "shop", "created_at"]
+    list_filter = ["movement_type", "direction", "shop", "status"]
+    search_fields = ["item__item_name", "reference_type", "note"]
+    readonly_fields = [field.name for field in StockLedger._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False

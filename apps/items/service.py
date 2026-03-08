@@ -1,10 +1,11 @@
 from django.db import transaction
 from django.conf import settings
 from apps.core.helpers import ResponseBuilder, generate_sequential_code
-from .models import Item, ItemCategory, ItemUnit
-from apps.core.commonQuery import CommonQuery, uploadFile
+from .models import Item, ItemCategory, ItemUnit, StockLedger
+from apps.core.commonQuery import CommonQuery, uploadFile, get_auth_context
 from apps.core.constants import ITEM_IMG_FOLDER, ITEM_CODE_PREFIX
 import json
+from decimal import Decimal, InvalidOperation
 
 class ItemCategoryService:
     @staticmethod
@@ -204,9 +205,24 @@ class ItemService:
                 
                 # Ignore legacy item_image field as requested
                 payload.pop('item_image', None)
+                opening_stock = Decimal(str(payload.get('opening_stock', "0.00")))
+                payload['current_stock'] = opening_stock
                 if 'brand' in payload: payload['brand_id'] = payload.pop('brand')
                 payload['item_code'] = generate_sequential_code(Item, 'item_code', ITEM_CODE_PREFIX)
                 item = CommonQuery.createRecord(Item, payload, request)
+
+                if opening_stock > 0:
+                    StockLedger.objects.create(
+                        item_id=item['id'],
+                        movement_type="OPENING_STOCK",
+                        direction="IN",
+                        quantity=opening_stock,
+                        balance_after=opening_stock,
+                        reference_type="ITEM",
+                        reference_id=item['id'],
+                        note="Opening stock at item creation",
+                        shop_id=item['shop'],
+                    )
                 
                 # Handle multiple images
                 if item.get('item_images'):
@@ -282,6 +298,8 @@ class ItemService:
                     payload['item_images'] = item_images_final
                 
                 payload.pop('item_image', None)
+                payload.pop('opening_stock', None)
+                payload.pop('current_stock', None)
                 
                 if 'brand' in payload: payload['brand_id'] = payload.pop('brand')
                 
@@ -452,5 +470,98 @@ class ItemService:
                         img['url'] = request.build_absolute_uri(settings.MEDIA_URL + url)
             
             return ResponseBuilder.success(data=item, message="Item retrieved successfully")
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+
+
+class InventoryService:
+    INWARD_TYPES = {"NEW_STOCK", "RETURN_STOCK", "ADJUSTMENT_IN"}
+    OUTWARD_TYPES = {"SALE_STOCK", "DAMAGED_STOCK", "USED_STOCK", "ADJUSTMENT_OUT"}
+    ALLOWED_TYPES = INWARD_TYPES | OUTWARD_TYPES
+
+    @staticmethod
+    def apply_stock_movement(
+        request,
+        item_id: int,
+        movement_type: str,
+        quantity,
+        note: str = None,
+        reference_type: str = None,
+        reference_id: int = None,
+    ):
+        movement_type = str(movement_type or "").upper().strip()
+        if movement_type not in InventoryService.ALLOWED_TYPES:
+            raise Exception("Invalid movement_type")
+
+        try:
+            qty = Decimal(str(quantity))
+        except (InvalidOperation, TypeError, ValueError):
+            raise Exception("Invalid quantity")
+
+        if qty <= 0:
+            raise Exception("Quantity must be greater than 0")
+
+        ctx = get_auth_context(request)
+
+        item = Item.objects.select_for_update().filter(
+            id=item_id,
+            shop_id=ctx["shop_id"],
+            status=0
+        ).first()
+        if not item:
+            raise Exception("Item not found")
+
+        is_inward = movement_type in InventoryService.INWARD_TYPES
+        if not is_inward and item.current_stock < qty:
+            raise Exception(f"Insufficient stock for item {item.item_name}")
+
+        if is_inward:
+            new_balance = item.current_stock + qty
+            direction = "IN"
+        else:
+            new_balance = item.current_stock - qty
+            direction = "OUT"
+
+        item.current_stock = new_balance
+        item.save(update_fields=["current_stock", "updated_at"])
+
+        StockLedger.objects.create(
+            item=item,
+            movement_type=movement_type,
+            direction=direction,
+            quantity=qty,
+            balance_after=new_balance,
+            reference_type=reference_type,
+            reference_id=reference_id,
+            note=note,
+            shop_id=ctx["shop_id"],
+        )
+
+        return {
+            "item_id": item.id,
+            "item_name": item.item_name,
+            "movement_type": movement_type,
+            "quantity": qty,
+            "current_stock": new_balance,
+        }
+
+    @staticmethod
+    def adjust_stock(request, payload: dict):
+        try:
+            with transaction.atomic():
+                result = InventoryService.apply_stock_movement(
+                    request=request,
+                    item_id=payload["item_id"],
+                    movement_type=payload["movement_type"],
+                    quantity=payload["quantity"],
+                    note=payload.get("note"),
+                    reference_type=payload.get("reference_type"),
+                    reference_id=payload.get("reference_id"),
+                )
+
+            return ResponseBuilder.success(
+                message="Stock updated successfully",
+                data=result
+            )
         except Exception as e:
             return ResponseBuilder.error(message=str(e), status_code=400)

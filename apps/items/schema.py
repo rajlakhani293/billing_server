@@ -88,7 +88,6 @@ class ItemUpdateSchema(Schema):
     description: Optional[str] = None
     purchase_price: Optional[Union[str, Decimal]] = None
     selling_price: Decimal = Decimal("0.00")
-    opening_stock: Optional[Union[str, Decimal]] = Decimal("0.00")
     min_stock_level: Optional[Union[str, Decimal]] = Decimal("0.00")
     primary_unit_id: int
     item_weight: Optional[Union[str, Decimal]] = None
@@ -106,7 +105,7 @@ class ItemUpdateSchema(Schema):
         except (ValueError, TypeError):
             raise ValueError("Value must be a valid decimal number")
 
-    @field_validator('opening_stock', 'min_stock_level', mode='before')
+    @field_validator('min_stock_level', mode='before')
     @classmethod
     def validate_stock_fields(cls, v):
         if v == "" or v is None:
@@ -126,3 +125,24 @@ class ItemUpdateSchema(Schema):
         except (ValueError, TypeError):
             raise ValueError("Brand must be a valid integer")
 
+
+class StockAdjustmentIn(Schema):
+    item_id: int
+    movement_type: str
+    quantity: Union[str, Decimal]
+    note: Optional[str] = None
+    reference_type: Optional[str] = None
+    reference_id: Optional[int] = None
+
+    @field_validator('quantity', mode='before')
+    @classmethod
+    def validate_quantity(cls, v):
+        try:
+            qty = Decimal(str(v))
+        except (ValueError, TypeError):
+            raise ValueError("Quantity must be a valid decimal number")
+
+        if qty <= 0:
+            raise ValueError("Quantity must be greater than 0")
+
+        return qty

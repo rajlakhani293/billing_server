@@ -1,8 +1,8 @@
 from ninja import Router,Form
 from apps.core.auth import AuthBearer
-from .service import ItemService, ItemCategoryService, ItemUnitService
+from .service import ItemService, ItemCategoryService, ItemUnitService, InventoryService
 from apps.core.schema import DeleteSchema
-from .schema import ItemCategoryCreateSchema, ItemCategoryUpdateSchema, ItemUnitUpdateSchema, ItemUnitCreateSchema, ItemIn, ItemUpdateSchema
+from .schema import ItemCategoryCreateSchema, ItemCategoryUpdateSchema, ItemUnitUpdateSchema, ItemUnitCreateSchema, ItemIn, ItemUpdateSchema, StockAdjustmentIn
 from apps.core.helpers import parse_multipart_request
 
 # ================================================================= ================================================================= =================================================================
@@ -35,6 +35,10 @@ def getItemById(request, item_id: int):
 def update_item(request, item_id: int, payload: ItemUpdateSchema = Form(...)):
     request = parse_multipart_request(request)
     return ItemService.update(request, item_id, payload.dict())
+
+@items_router.post('/stock/adjust')
+def adjustStock(request, payload: StockAdjustmentIn):
+    return InventoryService.adjust_stock(request, payload.dict())
 
 # ================================================================= ================================================================= =================================================================
 # Item Category CRUD APIs
