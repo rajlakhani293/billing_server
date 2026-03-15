@@ -12,8 +12,8 @@ class SalesTransactionInline(TabularInline):
 
 @admin.register(Sales)
 class SalesAdmin(ModelAdmin):
-    list_display = ["id", 'sales_code', 'party', 'shop', 'total_amount', 'paid_amount', 'payment_mode', 'sales_date', 'status']
-    list_filter = ['payment_mode', 'sales_date', 'shop', 'party']
+    list_display = ["id", 'sales_code', 'party', 'shop', 'total_amount', 'paid_amount', 'payment_mode', 'status']
+    list_filter = ['payment_mode', 'shop', 'party']
     search_fields = ['sales_code', 'party__name', 'notes']
     list_editable = ['status']
     readonly_fields = ['created_at', 'updated_at']
@@ -21,7 +21,7 @@ class SalesAdmin(ModelAdmin):
     
     fieldsets = (
         ('Basic Information', {
-            'fields': ('sales_code', 'party', 'shop', 'sales_date')
+            'fields': ('sales_code', 'party', 'shop')
         }),
         ('Financial Details', {
             'fields': ('subtotal', 'tax_amount', 'discount_percentage', 'discount_amount', 'total_amount', 'paid_amount')

@@ -5,11 +5,11 @@ from apps.core.schema import DeleteSchema
 from .schema import ItemCategoryCreateSchema, ItemCategoryUpdateSchema, ItemUnitUpdateSchema, ItemUnitCreateSchema, ItemIn, ItemUpdateSchema, StockAdjustmentIn
 from apps.core.helpers import parse_multipart_request
 
+items_router = Router(tags=['Items'], auth=AuthBearer())
+
 # ================================================================= ================================================================= =================================================================
 # Items CRUD APIs
 # ================================================================= ================================================================= =================================================================
-items_router = Router(tags=['Items'], auth=AuthBearer())
-
 
 @items_router.post("/")
 def create_item(request, payload: ItemIn = Form(...)):
@@ -35,10 +35,6 @@ def getItemById(request, item_id: int):
 def update_item(request, item_id: int, payload: ItemUpdateSchema = Form(...)):
     request = parse_multipart_request(request)
     return ItemService.update(request, item_id, payload.dict())
-
-@items_router.post('/stock/adjust')
-def adjustStock(request, payload: StockAdjustmentIn):
-    return InventoryService.adjust_stock(request, payload.dict())
 
 # ================================================================= ================================================================= =================================================================
 # Item Category CRUD APIs
@@ -74,7 +70,6 @@ def updateCategory(request, category_id: int, payload: ItemCategoryUpdateSchema)
 def getCategoryById(request, category_id: int):
     return ItemCategoryService.getById(category_id, request)
 
-
 # ================================================================= ================================================================= =================================================================
 # Item Unit CRUD APIs
 # ================================================================= ================================================================= =================================================================
@@ -108,3 +103,15 @@ def updateUnit(request, unit_id: int, payload: ItemUnitUpdateSchema):
 @items_router.get('/units/{unit_id}')
 def getUnitById(request, unit_id: int):
     return ItemUnitService.getById(unit_id, request)
+
+# ================================================================= ================================================================= =================================================================
+# Stock Adjust APIs
+# ================================================================= ================================================================= =================================================================
+
+@items_router.post('/stock/adjust')
+def adjustStock(request, payload: StockAdjustmentIn):
+    return InventoryService.adjust_stock(request, payload.dict())
+
+@items_router.post('/stock/get-transactions')
+def getStockTransactions(request, payload: dict = None):
+    return InventoryService.getStockTransactions(payload, request)

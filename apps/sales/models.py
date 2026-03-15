@@ -26,12 +26,12 @@ class Sales(IntegerModel, TimestampedModel):
     discount_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text='Total discount amount', blank=True, null=True)
     total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text='Final total amount')
     paid_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text='Amount paid')
+    balance_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text='Pending amount')
     
     # Payment and status
     payment_mode = models.IntegerField(choices=PAYMENT_MODE_CHOICES, default=1, help_text='Payment method')
     
     # Additional details
-    sales_date = models.DateTimeField(help_text='Date of invoice')
     notes = models.TextField(blank=True, null=True, help_text='Additional notes')
     is_reverted = models.BooleanField(default=False, help_text='True when full sales invoice is reverted')
     status = models.IntegerField(default=0, help_text='0: Active, 1: Inactive, 2: Deleted')
@@ -43,7 +43,6 @@ class Sales(IntegerModel, TimestampedModel):
         verbose_name_plural = 'Sales'
         ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['shop', 'sales_date']),
             models.Index(fields=['party', 'status']),
             models.Index(fields=['sales_code']),
             models.Index(fields=['payment_mode']),
@@ -69,7 +68,7 @@ class Sales(IntegerModel, TimestampedModel):
     
     @property
     def outstanding_amount(self):
-        return self.total_amount - self.paid_amount
+        return self.balance_amount
 
 
 class SalesTransaction(IntegerModel, TimestampedModel):
@@ -165,3 +164,38 @@ class SalesReturnTransaction(IntegerModel, TimestampedModel):
 
     def __str__(self):
         return f"{self.item.item_name} - Return {self.sales_return.return_code}"
+
+
+class CustomerLedger(IntegerModel, TimestampedModel):
+    ENTRY_TYPE_CHOICES = [
+        ("SALE", "Sale"),
+        ("PAYMENT", "Payment"),
+        ("RETURN", "Return"),
+        ("ADJUSTMENT", "Adjustment"),
+    ]
+
+    party = models.ForeignKey(Party, on_delete=models.CASCADE, related_name="ledger_entries", help_text="Customer")
+    sales = models.ForeignKey(Sales, on_delete=models.SET_NULL, null=True, blank=True, related_name="ledger_entries")
+    entry_type = models.CharField(max_length=20, choices=ENTRY_TYPE_CHOICES)
+    amount = models.DecimalField(max_digits=12, decimal_places=2, help_text="Positive for sale, negative for payment/return")
+    balance_after = models.DecimalField(max_digits=12, decimal_places=2, help_text="Balance after entry")
+    reference_type = models.CharField(max_length=50, blank=True, null=True)
+    reference_id = models.IntegerField(blank=True, null=True)
+    note = models.TextField(blank=True, null=True)
+    status = models.IntegerField(default=0, help_text="0: Active, 1: Inactive, 2: Deleted")
+    shop = models.ForeignKey(Shop, on_delete=models.CASCADE, related_name="customer_ledger_entries")
+
+    class Meta:
+        db_table = "customer_ledger"
+        verbose_name = "Customer Ledger"
+        verbose_name_plural = "Customer Ledger"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["shop", "party", "created_at"]),
+            models.Index(fields=["entry_type", "created_at"]),
+            models.Index(fields=["reference_type", "reference_id"]),
+            models.Index(fields=["status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.party.name} - {self.entry_type} ({self.amount})"

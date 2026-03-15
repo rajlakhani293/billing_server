@@ -105,13 +105,19 @@ class Item(IntegerModel, TimestampedModel):
 class StockLedger(IntegerModel, TimestampedModel):
     MOVEMENT_TYPES = [
         ("OPENING_STOCK", "Opening Stock"),
-        ("NEW_STOCK", "New Stock"),
-        ("SALE_STOCK", "Sale Stock"),
-        ("RETURN_STOCK", "Return Stock"),
-        ("DAMAGED_STOCK", "Damaged Stock"),
-        ("USED_STOCK", "Used Stock"),
+        ("PURCHASE", "Purchase"),
+        ("SALES_RETURN", "Sales Return"),
+        ("TRANSFER_IN", "Transfer In"),
         ("ADJUSTMENT_IN", "Adjustment In"),
+        ("SALE", "Sale"),
+        ("PURCHASE_RETURN", "Purchase Return"),
+        ("TRANSFER_OUT", "Transfer Out"),
+        ("DAMAGE", "Damage"),
         ("ADJUSTMENT_OUT", "Adjustment Out"),
+        ("SAMPLE_GIVEN", "Sample Given"),
+        ("INTERNAL_USE", "Internal Use"),
+        ("THEFT_LOSS", "Theft / Loss"),
+        ("DAMAGE_EXPIRED", "Damage / Expired"),
     ]
 
     DIRECTION_CHOICES = [

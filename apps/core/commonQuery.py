@@ -113,6 +113,32 @@ def serializeModelInstance(instance):
     return data
 
 class CommonQuery:
+    @staticmethod
+    def getAuthContext(request):
+        return get_auth_context(request)
+
+    @staticmethod
+    def query(model, request=None, require_tenant_fields=True, apply_status=True, for_update=False):
+        queryset = model.objects.all()
+        if for_update:
+            queryset = queryset.select_for_update()
+
+        model_fields = [f.name for f in model._meta.get_fields()]
+
+        if apply_status and 'status' in model_fields:
+            queryset = queryset.filter(status=0)
+
+        if require_tenant_fields and request:
+            try:
+                ctx = get_auth_context(request)
+                if 'shop' in model_fields:
+                    queryset = queryset.filter(shop_id=ctx['shop_id'])
+                if 'user' in model_fields:
+                    queryset = queryset.filter(user_id=ctx['user_id'])
+            except:
+                pass
+
+        return queryset
 
     @staticmethod
     def createRecord(model, data, request, require_tenant_fields=True):

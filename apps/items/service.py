@@ -2,7 +2,7 @@ from django.db import transaction
 from django.conf import settings
 from apps.core.helpers import ResponseBuilder, generate_sequential_code
 from .models import Item, ItemCategory, ItemUnit, StockLedger
-from apps.core.commonQuery import CommonQuery, uploadFile, get_auth_context
+from apps.core.commonQuery import CommonQuery, uploadFile
 from apps.core.constants import ITEM_IMG_FOLDER, ITEM_CODE_PREFIX
 import json
 from decimal import Decimal, InvalidOperation
@@ -212,16 +212,19 @@ class ItemService:
                 item = CommonQuery.createRecord(Item, payload, request)
 
                 if opening_stock > 0:
-                    StockLedger.objects.create(
-                        item_id=item['id'],
-                        movement_type="OPENING_STOCK",
-                        direction="IN",
-                        quantity=opening_stock,
-                        balance_after=opening_stock,
-                        reference_type="ITEM",
-                        reference_id=item['id'],
-                        note="Opening stock at item creation",
-                        shop_id=item['shop'],
+                    CommonQuery.createRecord(
+                        StockLedger,
+                        {
+                            "item_id": item["id"],
+                            "movement_type": "OPENING_STOCK",
+                            "direction": "IN",
+                            "quantity": opening_stock,
+                            "balance_after": opening_stock,
+                            "reference_type": "ITEM",
+                            "reference_id": item["id"],
+                            "note": "Opening stock at item creation",
+                        },
+                        request,
                     )
                 
                 # Handle multiple images
@@ -475,8 +478,18 @@ class ItemService:
 
 
 class InventoryService:
-    INWARD_TYPES = {"NEW_STOCK", "RETURN_STOCK", "ADJUSTMENT_IN"}
-    OUTWARD_TYPES = {"SALE_STOCK", "DAMAGED_STOCK", "USED_STOCK", "ADJUSTMENT_OUT"}
+    INWARD_TYPES = {"PURCHASE", "SALES_RETURN", "TRANSFER_IN", "ADJUSTMENT_IN"}
+    OUTWARD_TYPES = {
+        "SALE",
+        "PURCHASE_RETURN",
+        "TRANSFER_OUT",
+        "DAMAGE",
+        "ADJUSTMENT_OUT",
+        "SAMPLE_GIVEN",
+        "INTERNAL_USE",
+        "THEFT_LOSS",
+        "DAMAGE_EXPIRED",
+    }
     ALLOWED_TYPES = INWARD_TYPES | OUTWARD_TYPES
 
     @staticmethod
@@ -501,13 +514,9 @@ class InventoryService:
         if qty <= 0:
             raise Exception("Quantity must be greater than 0")
 
-        ctx = get_auth_context(request)
-
-        item = Item.objects.select_for_update().filter(
-            id=item_id,
-            shop_id=ctx["shop_id"],
-            status=0
-        ).first()
+        item = CommonQuery.query(
+            Item, request=request, for_update=True, apply_status=True
+        ).filter(id=item_id).first()
         if not item:
             raise Exception("Item not found")
 
@@ -525,16 +534,19 @@ class InventoryService:
         item.current_stock = new_balance
         item.save(update_fields=["current_stock", "updated_at"])
 
-        StockLedger.objects.create(
-            item=item,
-            movement_type=movement_type,
-            direction=direction,
-            quantity=qty,
-            balance_after=new_balance,
-            reference_type=reference_type,
-            reference_id=reference_id,
-            note=note,
-            shop_id=ctx["shop_id"],
+        CommonQuery.createRecord(
+            StockLedger,
+            {
+                "item_id": item.id,
+                "movement_type": movement_type,
+                "direction": direction,
+                "quantity": qty,
+                "balance_after": new_balance,
+                "reference_type": reference_type,
+                "reference_id": reference_id,
+                "note": note,
+            },
+            request,
         )
 
         return {
@@ -562,6 +574,45 @@ class InventoryService:
             return ResponseBuilder.success(
                 message="Stock updated successfully",
                 data=result
+            )
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+
+    @staticmethod
+    def getStockTransactions(data, request):
+        try:
+            fieldConfig = [
+                ["item__item_name", True, True],
+                ["movement_type", True, True],
+                ["direction", True, True],
+                ["quantity", True, True],
+            ]
+
+            options = {
+                "attributes": [
+                    "id",
+                    "item__item_name",
+                    "movement_type",
+                    "direction",
+                    "quantity",
+                    "balance_after",
+                    "reference_type",
+                    "reference_id",
+                    "note",
+                    "created_at",
+                ]
+            }
+
+            result = CommonQuery.fetchPaginatedData(
+                StockLedger, data, fieldConfig, options, request
+            )
+
+            for row in result.get("items", []):
+                row["item_name"] = row.pop("item__item_name", None)
+
+            return ResponseBuilder.success(
+                data=result,
+                message="Stock transactions retrieved successfully"
             )
         except Exception as e:
             return ResponseBuilder.error(message=str(e), status_code=400)
