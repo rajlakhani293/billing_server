@@ -1,5 +1,4 @@
 from django.db import transaction
-from django.db.models import Sum
 from django.utils import timezone
 from datetime import timedelta
 import json
@@ -14,10 +13,10 @@ from apps.settings.models import Party
 class SalesService:
 
     @staticmethod
-    def _create_ledger_entry(request, party_id, amount, entry_type, sales_id=None, reference_type=None, reference_id=None, note=None):
-        party = CommonQuery.query(
-            Party, request=request, for_update=True, apply_status=True
-        ).filter(id=party_id).first()
+    def _create_ledger_entry(request, party_id, amount, sales_id=None, note=None):
+        party = CommonQuery.findOneRecordForUpdate(
+            Party, {"id": party_id}, request=request
+        )
         if not party:
             return None
 
@@ -36,16 +35,16 @@ class SalesService:
 
         party.save(update_fields=["current_balance", "balance_type", "wallet_balance", "updated_at"])
 
+        entry_date = timezone.localdate()
         CommonQuery.createRecord(
             CustomerLedger,
             {
                 "party_id": party.id,
                 "sales_id": sales_id,
-                "entry_type": entry_type,
                 "amount": amount,
-                "balance_after": new_balance,
-                "reference_type": reference_type,
-                "reference_id": reference_id,
+                "date": entry_date,
+                "month": entry_date.month,
+                "year": entry_date.year,
                 "note": note,
             },
             request,
@@ -71,6 +70,7 @@ class SalesService:
             with transaction.atomic():
                 # Extract transactions data
                 transactions_data = payload.pop('transactions', [])
+                payload["sales_date"] = timezone.localdate()
 
                 total_amount = Decimal(str(payload.get('total_amount', "0.00")))
                 paid_amount_raw = payload.get('paid_amount', "0.00")
@@ -106,27 +106,15 @@ class SalesService:
                     )
 
                 party_id = sales.get("party_id") or sales.get("party") or payload.get("party_id")
-                if party_id:
-                    SalesService._create_ledger_entry(
-                        request=request,
-                        party_id=party_id,
-                        amount=total_amount,
-                        entry_type="SALE",
-                        sales_id=sales["id"],
-                        reference_type="SALES",
-                        reference_id=sales["id"],
-                        note=f"Sales invoice {sales['sales_code']}",
-                    )
-                    if paid_amount > 0:
+                if payload.get("payment_mode") == 3 and party_id:
+                    due_amount = max(Decimal("0.00"), total_amount - paid_amount)
+                    if due_amount > 0:
                         SalesService._create_ledger_entry(
                             request=request,
                             party_id=party_id,
-                            amount=-paid_amount,
-                            entry_type="PAYMENT",
+                            amount=due_amount,
                             sales_id=sales["id"],
-                            reference_type="SALES_PAYMENT",
-                            reference_id=sales["id"],
-                            note=f"Payment for {sales['sales_code']}",
+                            note=f"Sales invoice {sales['sales_code']}",
                         )
                 
                 return ResponseBuilder.success(
@@ -170,262 +158,102 @@ class SalesService:
             )
 
     @staticmethod
-    def getLedgerTransactions(data, request):
-        try:
-            data = data or {}
-            fieldConfig = [
-                ["party__name", True, True],
-                ["sales__sales_code", True, True],
-                ["entry_type", True, True],
-                ["note", True, False],
-                ["amount", False, True],
-                ["balance_after", False, True],
-                ["reference_type", True, True],
-                ["reference_id", False, True],
-                ["created_at", False, True],
-            ]
-
-            options = {
-                "attributes": [
-                    "id",
-                    "party__name",
-                    "sales__sales_code",
-                    "entry_type",
-                    "amount",
-                    "balance_after",
-                    "reference_type",
-                    "reference_id",
-                    "note",
-                    "created_at",
-                ],
-            }
-
-            result = CommonQuery.fetchPaginatedData(
-                CustomerLedger,
-                data,
-                fieldConfig,
-                options,
-                request,
-                date_field="created_at",
-            )
-
-            return ResponseBuilder.success(
-                data=result,
-                message="Ledger transactions retrieved successfully",
-            )
-        except Exception as e:
-            return ResponseBuilder.error(message=str(e), status_code=400)
-
-    @staticmethod
-    def getLedgerPayments(data, request):
-        try:
-            data = data or {}
-            existing_filter = data.get("filter") or {}
-            data["filter"] = {**existing_filter, "entry_type": "PAYMENT"}
-            return SalesService.getLedgerTransactions(data, request)
-        except Exception as e:
-            return ResponseBuilder.error(message=str(e), status_code=400)
-
-    @staticmethod
-    def getPartyCreditSummary(data, request):
-        try:
-            data = data or {}
-            period = str(data.get("period") or "monthly").lower()
-            if period not in {"monthly", "yearly"}:
-                period = "monthly"
-
-            now = timezone.localtime(timezone.now())
-            if period == "yearly":
-                start_date = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-                end_date = now.replace(month=12, day=31, hour=23, minute=59, second=59, microsecond=999999)
-            else:
-                start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-                end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(microseconds=1)
-
-            sales_rows = (
-                CommonQuery.query(Sales, request=request, apply_status=True)
-                .filter(created_at__range=(start_date, end_date), is_reverted=False)
-                .values("party_id", "party__name")
-                .annotate(total_amount=Sum("total_amount"), total_paid=Sum("paid_amount"))
-            )
-
-            rows = []
-            for row in sales_rows:
-                party_id = row.get("party_id")
-                if not party_id:
-                    continue
-                total_amount = row.get("total_amount") or Decimal("0.00")
-                total_paid = row.get("total_paid") or Decimal("0.00")
-                due_amount = total_amount - total_paid
-                if due_amount <= 0:
-                    continue
-                rows.append({
-                    "party_id": party_id,
-                    "party__name": row.get("party__name"),
-                    "total_amount": total_amount,
-                    "total_paid": total_paid,
-                    "due_amount": due_amount,
-                })
-
-            rows.sort(key=lambda x: x["due_amount"], reverse=True)
-
-            return ResponseBuilder.success(
-                data={
-                    "period": period,
-                    "start_date": start_date,
-                    "end_date": end_date,
-                    "items": rows,
-                    "total": len(rows),
-                },
-                message="Party credit summary retrieved successfully",
-            )
-        except Exception as e:
-            return ResponseBuilder.error(message=str(e), status_code=400)
-
-    @staticmethod
-    def getPartyCreditDays(party_id, data, request):
-        try:
-            data = data or {}
-            period = str(data.get("period") or "monthly").lower()
-            if period not in {"monthly", "yearly"}:
-                period = "monthly"
-
-            now = timezone.localtime(timezone.now())
-            if period == "yearly":
-                start_date = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-                end_date = now.replace(month=12, day=31, hour=23, minute=59, second=59, microsecond=999999)
-            else:
-                start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-                end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(microseconds=1)
-
-            qs = (
-                CommonQuery.query(Sales, request=request, apply_status=True)
-                .filter(
-                    created_at__range=(start_date, end_date),
-                    party_id=party_id,
-                    is_reverted=False,
-                )
-                .values("created_at", "sales_code", "total_amount", "paid_amount")
-                .order_by("created_at")
-            )
-
-            day_map = {}
-            for row in qs:
-                dt = row.get("created_at")
-                if dt is None:
-                    continue
-                if timezone.is_aware(dt):
-                    dt = timezone.localtime(dt)
-                day_key = dt.strftime("%Y-%m-%d")
-                day_label = dt.strftime("%d %b")
-                day_map.setdefault(day_key, {
-                    "label": day_label,
-                    "total_amount": Decimal("0.00"),
-                    "total_paid": Decimal("0.00"),
-                    "due_amount": Decimal("0.00"),
-                    "sales": [],
-                })
-                total_amount = row.get("total_amount") or Decimal("0.00")
-                total_paid = row.get("paid_amount") or Decimal("0.00")
-                due_amount = total_amount - total_paid
-                day_map[day_key]["total_amount"] += total_amount
-                day_map[day_key]["total_paid"] += total_paid
-                day_map[day_key]["due_amount"] += due_amount
-                day_map[day_key]["sales"].append({
-                    "sales_code": row.get("sales_code"),
-                    "total_amount": total_amount,
-                    "paid_amount": total_paid,
-                    "due_amount": due_amount,
-                    "created_at": row.get("created_at"),
-                })
-
-            days = list(day_map.values())
-            days.sort(key=lambda x: x["label"])
-
-            return ResponseBuilder.success(
-                data={
-                    "period": period,
-                    "start_date": start_date,
-                    "end_date": end_date,
-                    "days": days,
-                },
-                message="Party credit day data retrieved successfully",
-            )
-        except Exception as e:
-            return ResponseBuilder.error(message=str(e), status_code=400)
-
-    @staticmethod
     def getById(sales_id, request):
         try:
-            sales = CommonQuery.query(
-                Sales, request=request, apply_status=False
-            ).filter(id=sales_id).first()
-            if not sales or sales.status == 2:
+            sales = CommonQuery.findOneRecord(
+                Sales, {"id": sales_id}, {}, request
+            )
+            if not sales or sales.get("status") == 2:
                 raise Exception("Sales record not found")
 
-            transaction_rows = CommonQuery.query(
-                SalesTransaction, request=request, apply_status=True
-            ).filter(sales_id=sales.id).select_related("item").order_by("created_at")
-
-            transactions = [
+            transaction_rows = CommonQuery.findAllRecords(
+                SalesTransaction,
+                {"sales_id": sales["id"]},
                 {
-                    "id": row.id,
-                    "item_id": row.item_id,
-                    "item__item_name": row.item.item_name,
-                    "item_quantity": row.item_quantity,
-                    "returned_quantity": row.returned_quantity,
-                    "item_rate": row.item_rate,
-                    "total_amount": row.total_amount,
-                    "item_description": row.item_description,
-                    "discount_percentage": row.discount_percentage,
-                    "discount_amount": row.discount_amount,
-                    "tax_amount": row.tax_amount,
-                }
-                for row in transaction_rows
-            ]
+                    "attributes": [
+                        "id",
+                        "item_id",
+                        "item__item_name",
+                        "item_quantity",
+                        "returned_quantity",
+                        "item_rate",
+                        "total_amount",
+                        "item_description",
+                        "discount_percentage",
+                        "discount_amount",
+                        "tax_amount",
+                    ],
+                    "order": ["created_at"],
+                },
+                request,
+            )
+            transactions = transaction_rows
 
-            returns = CommonQuery.query(
-                SalesReturn, request=request, apply_status=True
-            ).filter(sales_id=sales.id).prefetch_related("transactions").order_by("-created_at")
+            returns = CommonQuery.findAllRecords(
+                SalesReturn,
+                {"sales_id": sales["id"]},
+                {"order": ["-created_at"]},
+                request,
+            )
+
+            return_lines = CommonQuery.findAllRecords(
+                SalesReturnTransaction,
+                {"sales_return__sales_id": sales["id"]},
+                {
+                    "attributes": [
+                        "id",
+                        "sales_return_id",
+                        "sales_transaction_id",
+                        "item_id",
+                        "item__item_name",
+                        "return_quantity",
+                        "item_rate",
+                        "total_amount",
+                    ]
+                },
+                request,
+            )
+
+            lines_by_return = {}
+            for line in return_lines:
+                lines_by_return.setdefault(line["sales_return_id"], []).append({
+                    "id": line["id"],
+                    "sales_transaction_id": line["sales_transaction_id"],
+                    "item_id": line["item_id"],
+                    "item_name": line.get("item__item_name"),
+                    "return_quantity": line["return_quantity"],
+                    "item_rate": line["item_rate"],
+                    "total_amount": line["total_amount"],
+                })
 
             returns_data = []
             for sales_return in returns:
-                return_lines = []
-                for line in sales_return.transactions.filter(status=0).select_related("item", "sales_transaction"):
-                    return_lines.append({
-                        "id": line.id,
-                        "sales_transaction_id": line.sales_transaction_id,
-                        "item_id": line.item_id,
-                        "item_name": line.item.item_name,
-                        "return_quantity": line.return_quantity,
-                        "item_rate": line.item_rate,
-                        "total_amount": line.total_amount,
-                    })
-
+                return_id = sales_return["id"] if isinstance(sales_return, dict) else sales_return.get("id")
                 returns_data.append({
-                    "id": sales_return.id,
-                    "return_code": sales_return.return_code,
-                    "return_date": sales_return.return_date,
-                    "total_return_amount": sales_return.total_return_amount,
-                    "notes": sales_return.notes,
-                    "transactions": return_lines,
+                    "id": return_id,
+                    "return_code": sales_return.get("return_code"),
+                    "return_date": sales_return.get("return_date"),
+                    "total_return_amount": sales_return.get("total_return_amount"),
+                    "notes": sales_return.get("notes"),
+                    "transactions": lines_by_return.get(return_id, []),
                 })
 
             sales_data = {
-                "id": sales.id,
-                "sales_code": sales.sales_code,
-                "party_id": sales.party_id,
-                "subtotal": sales.subtotal,
-                "tax_amount": sales.tax_amount,
-                "discount_percentage": sales.discount_percentage,
-                "discount_amount": sales.discount_amount,
-                "total_amount": sales.total_amount,
-                "paid_amount": sales.paid_amount,
-                "balance_amount": sales.balance_amount,
-                "payment_mode": sales.payment_mode,
-                "notes": sales.notes,
-                "is_reverted": sales.is_reverted,
-                "status": sales.status,
+                "id": sales.get("id"),
+                "sales_code": sales.get("sales_code"),
+                "sales_date": sales.get("sales_date"),
+                "party_id": sales.get("party_id"),
+                "subtotal": sales.get("subtotal"),
+                "tax_amount": sales.get("tax_amount"),
+                "discount_percentage": sales.get("discount_percentage"),
+                "discount_amount": sales.get("discount_amount"),
+                "total_amount": sales.get("total_amount"),
+                "paid_amount": sales.get("paid_amount"),
+                "balance_amount": sales.get("balance_amount"),
+                "payment_mode": sales.get("payment_mode"),
+                "notes": sales.get("notes"),
+                "is_reverted": sales.get("is_reverted"),
+                "status": sales.get("status"),
                 "transactions": transactions,
                 "returns": returns_data,
             }
@@ -435,12 +263,165 @@ class SalesService:
             return ResponseBuilder.error(message=str(e), status_code=400)
 
     @staticmethod
+    def getInvoiceView(sales_id, request):
+        try:
+            sales = CommonQuery.findOneRecord(
+                Sales,
+                {"id": sales_id},
+                {
+                    "attributes": [
+                        "id",
+                        "sales_code",
+                        "sales_date",
+                        "created_at",
+                        "party_id",
+                        "shop_id",
+                        "subtotal",
+                        "tax_amount",
+                        "discount_percentage",
+                        "discount_amount",
+                        "total_amount",
+                        "paid_amount",
+                        "balance_amount",
+                        "payment_mode",
+                        "notes",
+                        "is_reverted",
+                        "status",
+                        "party__name",
+                        "party__phone_number",
+                        "party__email",
+                        "party__address",
+                        "party__pincode",
+                        "party__city__name",
+                        "party__state__name",
+                        "party__country__name",
+                    ]
+                },
+                request,
+            )
+            if not sales or sales.get("status") == 2:
+                raise Exception("Sales record not found")
+
+            transactions = CommonQuery.findAllRecords(
+                SalesTransaction,
+                {"sales": sales["id"]},
+                {
+                    "attributes": [
+                        "id",
+                        "item_id",
+                        "item__item_code",
+                        "item__item_name",
+                        "item__primary_unit__short_name",
+                        "item_quantity",
+                        "returned_quantity",
+                        "item_rate",
+                        "total_amount",
+                        "item_description",
+                        "discount_percentage",
+                        "discount_amount",
+                        "tax_amount",
+                    ],
+                    "order": ["created_at"],
+                },
+                request,
+            )
+
+            returns = CommonQuery.findAllRecords(
+                SalesReturn,
+                {"sales": sales["id"]},
+                {"order": ["-created_at"]},
+                request,
+            )
+
+            return_lines = CommonQuery.findAllRecords(
+                SalesReturnTransaction,
+                {"sales_return__sales_id": sales["id"]},
+                {
+                    "attributes": [
+                        "id",
+                        "sales_return_id",
+                        "sales_transaction_id",
+                        "item_id",
+                        "item__item_name",
+                        "return_quantity",
+                        "item_rate",
+                        "total_amount",
+                    ]
+                },
+                request,
+            )
+
+            lines_by_return = {}
+            for line in return_lines:
+                lines_by_return.setdefault(line["sales_return_id"], []).append({
+                    "id": line["id"],
+                    "sales_transaction_id": line["sales_transaction_id"],
+                    "item_id": line["item_id"],
+                    "item_name": line.get("item__item_name"),
+                    "return_quantity": line["return_quantity"],
+                    "item_rate": line["item_rate"],
+                    "total_amount": line["total_amount"],
+                })
+
+            returns_data = []
+            for sales_return in returns:
+                return_id = sales_return["id"] if isinstance(sales_return, dict) else sales_return.get("id")
+                returns_data.append({
+                    "id": return_id,
+                    "return_code": sales_return.get("return_code"),
+                    "return_date": sales_return.get("return_date"),
+                    "total_return_amount": sales_return.get("total_return_amount"),
+                    "notes": sales_return.get("notes"),
+                    "transactions": lines_by_return.get(return_id, []),
+                })
+
+            payment_mode_label = dict(Sales.PAYMENT_MODE_CHOICES).get(sales.get("payment_mode"))
+
+            invoice_data = {
+                "sales": {
+                    "id": sales.get("id"),
+                    "sales_code": sales.get("sales_code"),
+                    "sales_date": sales.get("sales_date"),
+                    "created_at": sales.get("created_at"),
+                    "subtotal": sales.get("subtotal"),
+                    "tax_amount": sales.get("tax_amount"),
+                    "discount_percentage": sales.get("discount_percentage"),
+                    "discount_amount": sales.get("discount_amount"),
+                    "total_amount": sales.get("total_amount"),
+                    "paid_amount": sales.get("paid_amount"),
+                    "balance_amount": sales.get("balance_amount"),
+                    "payment_mode": sales.get("payment_mode"),
+                    "payment_mode_label": payment_mode_label,
+                    "notes": sales.get("notes"),
+                    "is_reverted": sales.get("is_reverted"),
+                    "status": sales.get("status"),
+                },
+                "party": {
+                    "id": sales.get("party_id"),
+                    "name": sales.get("party__name"),
+                    "phone_number": sales.get("party__phone_number"),
+                    "email": sales.get("party__email"),
+                    "address": sales.get("party__address"),
+                    "pincode": sales.get("party__pincode"),
+                    "city": sales.get("party__city__name"),
+                    "state": sales.get("party__state__name"),
+                    "country": sales.get("party__country__name"),
+                },
+                "transactions": transactions,
+                "returns": returns_data,
+            }
+
+            return ResponseBuilder.success(data=invoice_data, message="Sales invoice retrieved successfully")
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+
+    @staticmethod
     def createReturn(request, sales_id: int, payload: dict):
         try:
             with transaction.atomic():
-                sales = CommonQuery.query(
-                    Sales, request=request, for_update=True, apply_status=True
-                ).filter(id=sales_id).first()
+                sales = CommonQuery.findOneRecordForUpdate(
+                    Sales, {"id": sales_id}, request=request
+                )
                 if not sales:
                     raise Exception("Sales record not found")
                 if sales.is_reverted:
@@ -469,9 +450,11 @@ class SalesService:
                     sales_transaction_id = row.get("sales_transaction_id")
                     return_qty = Decimal(str(row.get("return_quantity")))
 
-                    sales_transaction = CommonQuery.query(
-                        SalesTransaction, request=request, for_update=True, apply_status=True
-                    ).filter(id=sales_transaction_id, sales_id=sales.id).first()
+                    sales_transaction = CommonQuery.findOneRecordForUpdate(
+                        SalesTransaction,
+                        {"id": sales_transaction_id, "sales_id": sales.id},
+                        request=request,
+                    )
                     if not sales_transaction:
                         raise Exception(f"Sales transaction {sales_transaction_id} not found")
 
@@ -529,15 +512,12 @@ class SalesService:
                 sales.balance_amount = max(Decimal("0.00"), sales.total_amount - sales.paid_amount)
                 sales.save(update_fields=["total_amount", "paid_amount", "balance_amount", "updated_at"])
 
-                if sales.party_id and total_return_amount > 0:
+                if sales.payment_mode == 3 and sales.party_id and total_return_amount > 0:
                     SalesService._create_ledger_entry(
                         request=request,
                         party_id=sales.party_id,
                         amount=-total_return_amount,
-                        entry_type="RETURN",
                         sales_id=sales.id,
-                        reference_type="SALES_RETURN",
-                        reference_id=sales_return_id,
                         note=f"Sales return {return_code}",
                     )
 
@@ -557,9 +537,9 @@ class SalesService:
     def update(request, sales_id: int, payload: dict):
         try:
             with transaction.atomic():
-                sales = CommonQuery.query(
-                    Sales, request=request, for_update=True, apply_status=True
-                ).filter(id=sales_id).first()
+                sales = CommonQuery.findOneRecordForUpdate(
+                    Sales, {"id": sales_id}, request=request
+                )
                 if not sales:
                     raise Exception("Sales record not found")
                 if sales.is_reverted:
@@ -593,9 +573,11 @@ class SalesService:
                         sales_transaction_id = row.get("sales_transaction_id")
                         return_qty = Decimal(str(row.get("return_quantity")))
 
-                        sales_transaction = CommonQuery.query(
-                            SalesTransaction, request=request, for_update=True, apply_status=True
-                        ).filter(id=sales_transaction_id, sales_id=sales.id).first()
+                        sales_transaction = CommonQuery.findOneRecordForUpdate(
+                            SalesTransaction,
+                            {"id": sales_transaction_id, "sales_id": sales.id},
+                            request=request,
+                        )
                         if not sales_transaction:
                             raise Exception(f"Sales transaction {sales_transaction_id} not found")
 
@@ -641,26 +623,25 @@ class SalesService:
                         request,
                     )
 
-                    if sales.party_id and total_return_amount > 0:
+                    if sales.payment_mode == 3 and sales.party_id and total_return_amount > 0:
                         SalesService._create_ledger_entry(
                             request=request,
                             party_id=sales.party_id,
                             amount=-total_return_amount,
-                            entry_type="RETURN",
                             sales_id=sales.id,
-                            reference_type="SALES_RETURN",
-                            reference_id=sales_return_id,
                             note=f"Sales return {return_code}",
                         )
 
                 if add_lines:
                     for trans_data in add_lines:
                         item_id = trans_data.get("item_id")
-                        item = CommonQuery.query(
-                            Item, request=request, apply_status=True
-                        ).filter(id=item_id).first()
+                        item = CommonQuery.findOneRecord(
+                            Item, {"id": item_id}, {}, request
+                        )
                         if not item:
                             raise Exception(f"Item {item_id} not found")
+                        item_id_val = item["id"] if isinstance(item, dict) else item.id
+                        item_name_val = item.get("item_name") if isinstance(item, dict) else item.item_name
 
                         qty = Decimal(str(trans_data.get("item_quantity")))
                         rate = Decimal(str(trans_data.get("item_rate")))
@@ -678,10 +659,10 @@ class SalesService:
                             SalesTransaction,
                             {
                                 "sales_id": sales.id,
-                                "item_id": item.id,
+                                "item_id": item_id_val,
                                 "item_quantity": qty,
                                 "item_rate": rate,
-                                "item_description": trans_data.get("item_description") or item.item_name,
+                                "item_description": trans_data.get("item_description") or item_name_val,
                                 "discount_percentage": Decimal(str(trans_data.get("discount_percentage") or "0.00")),
                                 "discount_amount": line_discount,
                                 "tax_amount": line_tax,
@@ -692,7 +673,7 @@ class SalesService:
 
                         InventoryService.apply_stock_movement(
                             request=request,
-                            item_id=item.id,
+                            item_id=item_id_val,
                             movement_type="SALE",
                             quantity=qty,
                             note=f"Sales update {sales.sales_code}",
@@ -705,15 +686,12 @@ class SalesService:
                         added_discount += line_discount
                         added_total += line_total
 
-                    if sales.party_id and added_total > 0:
+                    if sales.payment_mode == 3 and sales.party_id and added_total > 0:
                         SalesService._create_ledger_entry(
                             request=request,
                             party_id=sales.party_id,
                             amount=added_total,
-                            entry_type="SALE",
                             sales_id=sales.id,
-                            reference_type="SALES_UPDATE",
-                            reference_id=sales.id,
                             note=f"Sales update {sales.sales_code}",
                         )
 
@@ -760,27 +738,54 @@ class SalesService:
     @staticmethod
     def getDashboardStats(request):
         try:
-            now = timezone.localtime(timezone.now())
-            start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            end_of_day = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+            today = timezone.localdate()
 
-            sales_qs = CommonQuery.query(Sales, request=request, apply_status=True)
-            today_sales_qs = sales_qs.filter(created_at__range=(start_of_day, end_of_day))
+            sales_rows = CommonQuery.findAllRecords(
+                Sales,
+                {},
+                {"attributes": ["total_amount", "paid_amount"]},
+                request,
+            )
+            today_sales_rows = CommonQuery.findAllRecords(
+                Sales,
+                {"sales_date": today},
+                {"attributes": ["total_amount", "paid_amount"]},
+                request,
+            )
 
-            total_sales_count = sales_qs.count()
-            total_sales_amount = sales_qs.aggregate(total=Sum("total_amount")).get("total") or Decimal("0.00")
-            today_sales_count = today_sales_qs.count()
-            today_sales_amount = today_sales_qs.aggregate(total=Sum("total_amount")).get("total") or Decimal("0.00")
-            today_collection = today_sales_qs.aggregate(total=Sum("paid_amount")).get("total") or Decimal("0.00")
+            total_sales_count = len(sales_rows)
+            total_sales_amount = sum(
+                (row.get("total_amount") or Decimal("0.00")) for row in sales_rows
+            ) if sales_rows else Decimal("0.00")
+            today_sales_count = len(today_sales_rows)
+            today_sales_amount = sum(
+                (row.get("total_amount") or Decimal("0.00")) for row in today_sales_rows
+            ) if today_sales_rows else Decimal("0.00")
+            today_collection = sum(
+                (row.get("paid_amount") or Decimal("0.00")) for row in today_sales_rows
+            ) if today_sales_rows else Decimal("0.00")
 
-            items_count = CommonQuery.query(Item, request=request, apply_status=True).count()
-            total_stock = CommonQuery.query(Item, request=request, apply_status=True).aggregate(
-                total=Sum("current_stock")
-            ).get("total") or Decimal("0.00")
-            total_returns_count = CommonQuery.query(SalesReturn, request=request, apply_status=True).count()
-            total_returns_amount = CommonQuery.query(SalesReturn, request=request, apply_status=True).aggregate(
-                total=Sum("total_return_amount")
-            ).get("total") or Decimal("0.00")
+            items_rows = CommonQuery.findAllRecords(
+                Item,
+                {},
+                {"attributes": ["current_stock"]},
+                request,
+            )
+            items_count = len(items_rows)
+            total_stock = sum(
+                (row.get("current_stock") or Decimal("0.00")) for row in items_rows
+            ) if items_rows else Decimal("0.00")
+
+            returns_rows = CommonQuery.findAllRecords(
+                SalesReturn,
+                {},
+                {"attributes": ["total_return_amount"]},
+                request,
+            )
+            total_returns_count = len(returns_rows)
+            total_returns_amount = sum(
+                (row.get("total_return_amount") or Decimal("0.00")) for row in returns_rows
+            ) if returns_rows else Decimal("0.00")
 
             return ResponseBuilder.success(
                 data={
@@ -823,44 +828,53 @@ class SalesService:
             if period not in {"daily", "monthly", "yearly"}:
                 period = "daily"
 
-            now = timezone.localtime(timezone.now())
+            today = timezone.localdate()
             if period == "monthly":
                 days = int(payload.get("days") or 30)
-                start_date = now - timedelta(days=days)
+                start_date = today - timedelta(days=days)
                 fmt = "%d %b"
-                end_date = now
+                end_date = today
             elif period == "yearly":
                 months = int(payload.get("months") or 12)
-                start_date = now - timedelta(days=months * 31)
+                start_date = today - timedelta(days=months * 31)
                 fmt = "%b %Y"
-                end_date = now
+                end_date = today
             else:
                 hours = int(payload.get("hours") or 24)
-                start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                start_date = today
                 fmt = "%H:%M"
-                end_date = start_date + timedelta(days=1)
+                end_date = today
 
-            qs = (
-                CommonQuery.query(Sales, request=request, apply_status=True)
-                .filter(created_at__gte=start_date, created_at__lt=end_date)
-                .values("created_at", "total_amount")
+            qs = CommonQuery.findAllRecords(
+                Sales,
+                {
+                    "sales_date__gte": start_date,
+                    "sales_date__lte": end_date,
+                },
+                {"attributes": ["sales_date", "created_at", "total_amount"]},
+                request,
             )
 
             buckets = {}
             for row in qs:
-                dt = row.get("created_at")
-                if dt is None:
-                    continue
-                if timezone.is_aware(dt):
-                    dt = timezone.localtime(dt)
-
                 if period == "monthly":
+                    dt = row.get("sales_date")
+                    if dt is None:
+                        continue
                     key = dt.strftime("%Y-%m-%d")
                     label = dt.strftime("%d %b")
                 elif period == "yearly":
+                    dt = row.get("sales_date")
+                    if dt is None:
+                        continue
                     key = dt.strftime("%Y-%m")
                     label = dt.strftime("%b %Y")
                 else:
+                    dt = row.get("created_at")
+                    if dt is None:
+                        continue
+                    if timezone.is_aware(dt):
+                        dt = timezone.localtime(dt)
                     key = dt.strftime("%Y-%m-%d %H:00")
                     label = dt.strftime("%I %p")
 
@@ -870,8 +884,8 @@ class SalesService:
 
             chart_data = []
             if period == "monthly":
-                current = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
-                end = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                current = start_date
+                end = end_date
                 while current <= end:
                     key = current.strftime("%Y-%m-%d")
                     label = current.strftime("%d %b")
@@ -879,8 +893,8 @@ class SalesService:
                     chart_data.append(entry)
                     current += timedelta(days=1)
             elif period == "yearly":
-                current = start_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-                end = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                current = start_date.replace(day=1)
+                end = end_date.replace(day=1)
                 while current <= end:
                     key = current.strftime("%Y-%m")
                     label = current.strftime("%b %Y")
@@ -893,8 +907,8 @@ class SalesService:
                         year += 1
                     current = current.replace(year=year, month=month)
             else:
-                current = start_date
-                end = start_date + timedelta(days=1)
+                current = timezone.localtime(timezone.now()).replace(hour=0, minute=0, second=0, microsecond=0)
+                end = current + timedelta(hours=hours)
                 while current < end:
                     key = current.strftime("%Y-%m-%d %H:00")
                     label = current.strftime("%I %p")
@@ -913,59 +927,40 @@ class SalesService:
             return ResponseBuilder.error(message=str(e), status_code=400)
 
     @staticmethod
-    def createPayment(request, payload: dict):
-        try:
-            party_id = payload.get("party_id")
-            amount = Decimal(str(payload.get("amount")))
-            note = payload.get("note")
-            if not party_id:
-                raise Exception("Party ID is required")
-            if amount <= 0:
-                raise Exception("Amount must be greater than 0")
-
-            with transaction.atomic():
-                SalesService._create_ledger_entry(
-                    request=request,
-                    party_id=party_id,
-                    amount=-amount,
-                    entry_type="PAYMENT",
-                    sales_id=None,
-                    reference_type="PARTY_PAYMENT",
-                    reference_id=None,
-                    note=note or "Customer payment",
-                )
-
-            return ResponseBuilder.success(
-                message="Payment recorded successfully",
-                data={"party_id": party_id, "amount": amount},
-            )
-        except Exception as e:
-            return ResponseBuilder.error(message=str(e), status_code=400)
-
-    @staticmethod
     def getTopProducts(request, payload: dict):
         try:
             days = int((payload or {}).get("days") or 30)
             limit = int((payload or {}).get("limit") or 5)
-            now = timezone.localtime(timezone.now())
-            start_date = now - timedelta(days=days)
+            today = timezone.localdate()
+            start_date = today - timedelta(days=days)
 
-            qs = (
-                CommonQuery.query(SalesTransaction, request=request, apply_status=True)
-                .filter(
-                    sales__status=0,
-                    sales__is_reverted=False,
-                    sales__created_at__gte=start_date,
-                )
-                .values("item_id", "item__item_name")
-                .annotate(
-                    total_sold=Sum("item_quantity"),
-                    total_revenue=Sum("total_amount"),
-                )
-                .order_by("-total_revenue")
+            tx_rows = CommonQuery.findAllRecords(
+                SalesTransaction,
+                {
+                    "sales__status": 0,
+                    "sales__is_reverted": False,
+                    "sales__sales_date__gte": start_date,
+                },
+                {"attributes": ["item_id", "item__item_name", "item_quantity", "total_amount"]},
+                request,
             )
 
-            items = list(qs[:limit])
+            agg = {}
+            for row in tx_rows:
+                item_id = row.get("item_id")
+                if not item_id:
+                    continue
+                if item_id not in agg:
+                    agg[item_id] = {
+                        "item_id": item_id,
+                        "item__item_name": row.get("item__item_name"),
+                        "total_sold": Decimal("0.00"),
+                        "total_revenue": Decimal("0.00"),
+                    }
+                agg[item_id]["total_sold"] += row.get("item_quantity") or Decimal("0.00")
+                agg[item_id]["total_revenue"] += row.get("total_amount") or Decimal("0.00")
+
+            items = sorted(agg.values(), key=lambda x: x["total_revenue"], reverse=True)[:limit]
             return ResponseBuilder.success(
                 data=items,
                 message="Top products retrieved successfully",
@@ -977,18 +972,21 @@ class SalesService:
     def revertSale(request, sales_id: int, payload: dict):
         try:
             with transaction.atomic():
-                sales = CommonQuery.query(
-                    Sales, request=request, for_update=True, apply_status=True
-                ).filter(id=sales_id).first()
+                sales = CommonQuery.findOneRecordForUpdate(
+                    Sales, {"id": sales_id}, request=request
+                )
                 if not sales:
                     raise Exception("Sales record not found")
                 if sales.is_reverted:
                     raise Exception("Sales record is already reverted")
 
-                sales_transactions = CommonQuery.query(
-                    SalesTransaction, request=request, for_update=True, apply_status=True
-                ).filter(sales_id=sales.id)
-                if not sales_transactions.exists():
+                sales_transactions = CommonQuery.findAllRecordsForUpdate(
+                    SalesTransaction,
+                    {"sales_id": sales.id},
+                    {},
+                    request,
+                )
+                if not sales_transactions:
                     raise Exception("No transactions found for sales record")
 
                 return_code = generate_sequential_code(SalesReturn, "return_code", "SRN")
@@ -1065,15 +1063,12 @@ class SalesService:
                     sales.notes = f"[REVERTED] {notes}"
                 sales.save(update_fields=["total_amount", "paid_amount", "balance_amount", "is_reverted", "notes", "updated_at"])
 
-                if sales.party_id and total_return_amount > 0:
+                if sales.payment_mode == 3 and sales.party_id and total_return_amount > 0:
                     SalesService._create_ledger_entry(
                         request=request,
                         party_id=sales.party_id,
                         amount=-total_return_amount,
-                        entry_type="RETURN",
                         sales_id=sales.id,
-                        reference_type="SALES_REVERT",
-                        reference_id=sales.id,
                         note=f"Sales revert {sales.sales_code}",
                     )
 

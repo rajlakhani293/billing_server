@@ -1,5 +1,6 @@
 from ninja import Schema
 from typing import Optional, List
+from datetime import date
 from decimal import Decimal
 from pydantic import field_validator, model_validator
 
@@ -18,6 +19,7 @@ class SalesTransactionSchema(Schema):
 
 class SalesIn(Schema):
     party_id: Optional[int] = None
+    sales_date: Optional[date] = None
     # Financials
     subtotal: Decimal
     tax_amount: Optional[Decimal] = 0.00
@@ -82,7 +84,6 @@ class SalesIn(Schema):
                 raise ValueError("Paid amount must be 0 or greater when payment mode is Partial")
         return self
 
-
 class SalesReturnTransactionIn(Schema):
     sales_transaction_id: int
     return_quantity: Decimal
@@ -99,32 +100,12 @@ class SalesReturnTransactionIn(Schema):
             raise ValueError("Return quantity must be greater than 0")
         return qty
 
-
 class SalesReturnIn(Schema):
     notes: Optional[str] = None
     transactions: List[SalesReturnTransactionIn]
 
-
 class SalesRevertIn(Schema):
     notes: Optional[str] = None
-
-
-class SalesPaymentIn(Schema):
-    party_id: int
-    amount: Decimal
-    note: Optional[str] = None
-
-    @field_validator("amount", mode="before")
-    @classmethod
-    def validate_amount(cls, v):
-        try:
-            amt = Decimal(str(v))
-        except (ValueError, TypeError):
-            raise ValueError("Amount must be a valid decimal number")
-        if amt <= 0:
-            raise ValueError("Amount must be greater than 0")
-        return amt
-
 
 class SalesUpdateIn(Schema):
     return_notes: Optional[str] = None

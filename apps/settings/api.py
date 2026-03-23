@@ -2,7 +2,7 @@
 from ninja.router import Router
 from apps.accounts.auth_service import AuthService
 from apps.core.auth import AuthBearer
-from apps.core.schema import DeleteSchema
+from apps.core.schema import DeleteSchema, PartyCreditDaysSchema
 from .schema import BrandCreateSchema, BrandUpdateSchema, TaxCreateSchema, TaxUpdateSchema, PartyCreateSchema, PartyUpdateSchema
 from .service import BrandService, TaxService, PartyService
 
@@ -118,3 +118,13 @@ def update(request, party_id: int, payload: PartyUpdateSchema):
 @setting_router.get('/parties/{party_id}')
 def getById(request, party_id: int):
     return PartyService.getById(party_id, request)
+
+# Party Due List (Sales)
+@setting_router.post('/party-due-list')
+def getPartyDueList(request, payload: dict = None):
+    return PartyService.getPartyDueList(payload, request)
+
+# Party Credit Summary (Sales)
+@setting_router.post('/party-credit-summary/{party_id}')
+def getPartyCreditDays(request, party_id: int, payload: PartyCreditDaysSchema):
+    return PartyService.getPartyCreditDays(party_id, payload.dict(), request)

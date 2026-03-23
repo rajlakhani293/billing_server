@@ -514,9 +514,9 @@ class InventoryService:
         if qty <= 0:
             raise Exception("Quantity must be greater than 0")
 
-        item = CommonQuery.query(
-            Item, request=request, for_update=True, apply_status=True
-        ).filter(id=item_id).first()
+        item = CommonQuery.findOneRecordForUpdate(
+            Item, {"id": item_id}, request=request
+        )
         if not item:
             raise Exception("Item not found")
 

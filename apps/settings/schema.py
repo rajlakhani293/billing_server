@@ -1,6 +1,6 @@
 from typing import Optional
 from ninja import Schema, ModelSchema
-from pydantic import Field
+from pydantic import Field, validator
 from decimal import Decimal
 from .models import Party
 
@@ -34,6 +34,12 @@ class PartyCreateSchema(Schema):
     pincode: Optional[str] = None
     balance_type: Optional[int] = None
     customer_category: Optional[int] = None
+    
+    @validator('email')
+    def empty_string_to_none(cls, v):
+        if v == '':
+            return None
+        return v
 
 class PartyUpdateSchema(Schema):
     name: str
@@ -47,6 +53,12 @@ class PartyUpdateSchema(Schema):
     pincode: Optional[str] = None
     balance_type: Optional[int] = None
     customer_category: Optional[int] = None
+    
+    @validator('email')
+    def empty_string_to_none(cls, v):
+        if v == '':
+            return None
+        return v
 
 class PartyOut(ModelSchema):
     class Meta:

@@ -50,3 +50,7 @@ class UpdateStatusSchema(Schema):
     ids: List[int]
     status: int
 
+class PartyCreditDaysSchema(Schema):
+    month: int
+    year: int
+

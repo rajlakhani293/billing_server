@@ -118,27 +118,44 @@ class CommonQuery:
         return get_auth_context(request)
 
     @staticmethod
-    def query(model, request=None, require_tenant_fields=True, apply_status=True, for_update=False):
-        queryset = model.objects.all()
-        if for_update:
-            queryset = queryset.select_for_update()
+    def findOneRecordForUpdate(model, query, options=None, request=None, require_tenant_fields=True):
+        filter_kwargs = {}
+        model_field_names = [f.name for f in model._meta.get_fields()]
 
-        model_fields = [f.name for f in model._meta.get_fields()]
+        if isinstance(query, dict):
+            for k, v in query.items():
+                if "__" not in k and k not in model_field_names:
+                    continue
+                if isinstance(v, list):
+                    filter_kwargs[f"{k}__in"] = v
+                else:
+                    filter_kwargs[k] = v
+        else:
+            filter_kwargs["id"] = query
 
-        if apply_status and 'status' in model_fields:
-            queryset = queryset.filter(status=0)
+        if "status" in model_field_names:
+            has_status_filter = any(k.startswith("status") for k in filter_kwargs.keys())
+            if not has_status_filter:
+                filter_kwargs["status"] = 0
 
         if require_tenant_fields and request:
             try:
                 ctx = get_auth_context(request)
-                if 'shop' in model_fields:
-                    queryset = queryset.filter(shop_id=ctx['shop_id'])
-                if 'user' in model_fields:
-                    queryset = queryset.filter(user_id=ctx['user_id'])
+                if "shop" in model_field_names and "shop_id" not in filter_kwargs:
+                    filter_kwargs["shop_id"] = ctx["shop_id"]
             except:
                 pass
 
-        return queryset
+        queryset = model.objects.select_for_update().filter(**filter_kwargs)
+
+        if options:
+            if options.get("select_related"):
+                queryset = queryset.select_related(*options["select_related"])
+            if options.get("attributes"):
+                queryset = queryset.values(*options["attributes"])
+                return queryset.first()
+
+        return queryset.first()
 
     @staticmethod
     def createRecord(model, data, request, require_tenant_fields=True):
@@ -573,6 +590,65 @@ class CommonQuery:
 
         except Exception as e:
             print(f"FindAllRecords Error: {e}")
+            raise e
+
+    @staticmethod
+    def findAllRecordsForUpdate(model, query_filters=None, options=None, request=None, require_tenant_fields=True):
+        try:
+            if query_filters is None:
+                query_filters = {}
+            if options is None:
+                options = {}
+
+            queryset = model.objects.select_for_update().all()
+            model_field_names = [f.name for f in model._meta.get_fields()]
+
+            filters = Q()
+            for k, v in query_filters.items():
+                if "__" not in k and k not in model_field_names:
+                    continue
+                if isinstance(v, list):
+                    filters &= Q(**{f"{k}__in": v})
+                elif v is not None:
+                    filters &= Q(**{k: v})
+
+            if "status" in model_field_names and "status" not in query_filters:
+                filters &= Q(status=0)
+
+            if require_tenant_fields and request:
+                try:
+                    ctx = get_auth_context(request)
+                    if "shop" in model_field_names and "shop_id" not in query_filters and "shop" not in query_filters:
+                        filters &= Q(shop_id=ctx["shop_id"])
+                except:
+                    pass
+
+            queryset = queryset.filter(filters)
+
+            order = options.get("order")
+            if order:
+                if isinstance(order, list):
+                    queryset = queryset.order_by(*order)
+                elif isinstance(order, str):
+                    queryset = queryset.order_by(order)
+
+            if options.get("select_related"):
+                queryset = queryset.select_related(*options["select_related"])
+
+            skip = options.get("skip", 0)
+            limit = options.get("limit")
+            if limit:
+                queryset = queryset[int(skip) : int(skip) + int(limit)]
+            elif skip:
+                queryset = queryset[int(skip) :]
+
+            if options.get("attributes"):
+                return list(queryset.values(*options["attributes"]))
+
+            return list(queryset)
+
+        except Exception as e:
+            print(f"FindAllRecordsForUpdate Error: {e}")
             raise e
 
     @staticmethod

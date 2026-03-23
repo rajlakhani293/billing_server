@@ -18,6 +18,7 @@ class Sales(IntegerModel, TimestampedModel):
       
     sales_code = models.CharField(max_length=50, unique=True, help_text='Unique sales number')
     party = models.ForeignKey(Party, on_delete=models.SET_NULL, null=True, blank=True, related_name='sales', help_text='Customer')
+    sales_date = models.DateField(blank=True, null=True, help_text='Sales date')
     
     # Financial details
     subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text='Subtotal before tax')
@@ -46,6 +47,7 @@ class Sales(IntegerModel, TimestampedModel):
             models.Index(fields=['party', 'status']),
             models.Index(fields=['sales_code']),
             models.Index(fields=['payment_mode']),
+            models.Index(fields=['shop', 'sales_date']),
         ]
         unique_together = [
             ['shop', 'sales_code']
@@ -167,20 +169,12 @@ class SalesReturnTransaction(IntegerModel, TimestampedModel):
 
 
 class CustomerLedger(IntegerModel, TimestampedModel):
-    ENTRY_TYPE_CHOICES = [
-        ("SALE", "Sale"),
-        ("PAYMENT", "Payment"),
-        ("RETURN", "Return"),
-        ("ADJUSTMENT", "Adjustment"),
-    ]
-
     party = models.ForeignKey(Party, on_delete=models.CASCADE, related_name="ledger_entries", help_text="Customer")
     sales = models.ForeignKey(Sales, on_delete=models.SET_NULL, null=True, blank=True, related_name="ledger_entries")
-    entry_type = models.CharField(max_length=20, choices=ENTRY_TYPE_CHOICES)
-    amount = models.DecimalField(max_digits=12, decimal_places=2, help_text="Positive for sale, negative for payment/return")
-    balance_after = models.DecimalField(max_digits=12, decimal_places=2, help_text="Balance after entry")
-    reference_type = models.CharField(max_length=50, blank=True, null=True)
-    reference_id = models.IntegerField(blank=True, null=True)
+    amount = models.DecimalField(max_digits=12, decimal_places=2, help_text="Due amount")
+    date = models.DateField(blank=True, null=True, help_text="Entry date")
+    month = models.PositiveSmallIntegerField(blank=True, null=True, help_text="Entry month (1-12)")
+    year = models.PositiveSmallIntegerField(blank=True, null=True, help_text="Entry year (YYYY)")
     note = models.TextField(blank=True, null=True)
     status = models.IntegerField(default=0, help_text="0: Active, 1: Inactive, 2: Deleted")
     shop = models.ForeignKey(Shop, on_delete=models.CASCADE, related_name="customer_ledger_entries")
@@ -192,10 +186,8 @@ class CustomerLedger(IntegerModel, TimestampedModel):
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["shop", "party", "created_at"]),
-            models.Index(fields=["entry_type", "created_at"]),
-            models.Index(fields=["reference_type", "reference_id"]),
             models.Index(fields=["status"]),
         ]
 
     def __str__(self):
-        return f"{self.party.name} - {self.entry_type} ({self.amount})"
+        return f"{self.party.name} - {self.amount}"

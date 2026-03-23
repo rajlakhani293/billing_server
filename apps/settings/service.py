@@ -1,7 +1,11 @@
 from django.db import transaction
+import json
+import math
+from decimal import Decimal
 from apps.core.helpers import ResponseBuilder
 from .models import Brand, Tax, Party
 from apps.core.commonQuery import CommonQuery
+from apps.sales.models import CustomerLedger
 
 
 class BrandService:
@@ -165,12 +169,8 @@ class PartyService:
                 ["email", True, True],
                 ["party_type", False, True],
             ]
-
-            option = {
-                'attributes': ['id', 'name', 'phone_number', 'email', 'party_type','customer_category','status']
-            }
-            
-            result = CommonQuery.fetchPaginatedData(Party, data, fieldConfig, option, request)
+ 
+            result = CommonQuery.fetchPaginatedData(Party, data, fieldConfig, {}, request)
             return ResponseBuilder.success(data=result, message="Parties retrieved successfully")
         except Exception as e:
             return ResponseBuilder.error(message=str(e), status_code=400)
@@ -198,3 +198,132 @@ class PartyService:
         except Exception as e:
             return ResponseBuilder.error(message=str(e), status_code=400)
 
+    @staticmethod
+    def getPartyCreditDays(party_id, data, request):
+        try:
+            result = CommonQuery.findAllRecords(
+                CustomerLedger,
+                {
+                    "month": data["month"],
+                    "year": data["year"],
+                    "party": party_id,
+                },
+                {
+                    "attributes": [
+                        "date",
+                        "amount",
+                        "note",
+                        "sales__sales_code",
+                    ]
+                },
+                request,
+            )
+
+            return ResponseBuilder.success(
+                message="Party credit day data retrieved successfully",
+                data=result,
+            )
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+
+    @staticmethod
+    def getPartyDueList(data, request):
+        try:
+            data = data or {}
+            if not data and getattr(request, "body", None):
+                try:
+                    parsed = json.loads(request.body.decode("utf-8"))
+                    if isinstance(parsed, dict):
+                        data = parsed
+                except Exception:
+                    pass
+
+            if not data.get("month") or not data.get("year"):
+                return ResponseBuilder.error(
+                    message="month and year are required",
+                    status_code=400,
+                )
+
+            month = int(data.get("month"))
+            year = int(data.get("year"))
+
+            page = max(int(data.get("page", 1)), 1)
+            limit_val = data.get("limit")
+            is_fetch_all = limit_val in ["all", "All"]
+            limit = None if is_fetch_all else (int(limit_val) if limit_val else 10)
+            offset = 0 if is_fetch_all else (page - 1) * limit
+
+            ledger_rows = CommonQuery.findAllRecords(
+                CustomerLedger,
+                {"month": month, "year": year},
+                {
+                    "attributes": [
+                        "party_id",
+                        "party__name",
+                        "party__phone_number",
+                        "party__email",
+                        "party__current_balance",
+                        "party__balance_type",
+                        "amount",
+                    ],
+                    "order": ["-created_at"],
+                },
+                request,
+            )
+
+            party_map = {}
+            for row in ledger_rows:
+                party_id = row.get("party_id")
+                if not party_id:
+                    continue
+                amount = row.get("amount") or Decimal("0.00")
+                entry = party_map.setdefault(
+                    party_id,
+                    {
+                        "party_id": party_id,
+                        "party__name": row.get("party__name"),
+                        "party__phone_number": row.get("party__phone_number"),
+                        "party__email": row.get("party__email"),
+                        "party__current_balance": row.get("party__current_balance"),
+                        "party__balance_type": row.get("party__balance_type"),
+                        "total_amount": Decimal("0.00"),
+                        "total_paid": Decimal("0.00"),
+                    },
+                )
+                if amount >= 0:
+                    entry["total_amount"] += amount
+                else:
+                    entry["total_paid"] += abs(amount)
+
+            items = []
+            for entry in party_map.values():
+                due_amount = entry["total_amount"] - entry["total_paid"]
+                if due_amount > 0:
+                    entry["due_amount"] = due_amount
+                    items.append(entry)
+
+            items.sort(key=lambda x: (-(x["due_amount"] or Decimal("0.00")), x.get("party__name") or ""))
+            total_count = len(items)
+
+            if not is_fetch_all:
+                items = items[offset : offset + limit]
+
+            result = {
+                "items": items,
+                "total": total_count,
+                "currentPage": 1 if is_fetch_all else page,
+                "pageSize": total_count if is_fetch_all else limit,
+                "totalPages": 1 if is_fetch_all else math.ceil(total_count / (limit or 1)),
+                "hasNextPage": False if is_fetch_all else (offset + limit) < total_count,
+                "hasPreviousPage": False if is_fetch_all else page > 1,
+                "appliedFilters": {
+                    "month": month,
+                    "year": year,
+                },
+            }
+
+            return ResponseBuilder.success(
+                data=result, message="Party due list retrieved successfully"
+            )
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
