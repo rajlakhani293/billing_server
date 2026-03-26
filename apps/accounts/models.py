@@ -42,11 +42,11 @@ class UserManager(BaseUserManager):
 
 class User(AbstractBaseUser, PermissionsMixin, IntegerModel, TimestampedModel):
     user_name = models.CharField(max_length=150, blank=True, null=True)
-    phone_number = models.CharField(max_length=15, blank=True, null=True, unique=True)
+    phone_number = models.CharField(max_length=15, unique=True)
     email = models.EmailField(unique=True, max_length=255, blank=True, null=True)
     password = models.CharField(max_length=128, null=True, blank=True)
-    shops = models.ManyToManyField('shops.Shop', related_name='staff', blank=True, help_text='The shops this user has access to')
-    primary_shop = models.ForeignKey('shops.Shop', on_delete=models.SET_NULL, null=True, blank=True, related_name='primary_staff')
+    primary_company = models.ForeignKey('company.Company', on_delete=models.SET_NULL, related_name='primary_staff', null=True, blank=True)
+    primary_branch = models.ForeignKey('company.Branch', on_delete=models.SET_NULL, related_name='primary_staff', null=True, blank=True)
     address = models.CharField(max_length=255, blank=True, null=True)
     city = models.ForeignKey(CityMaster, on_delete=models.SET_NULL, null=True, blank=True)
     state = models.ForeignKey(StateMaster, on_delete=models.SET_NULL, null=True, blank=True)
@@ -58,6 +58,8 @@ class User(AbstractBaseUser, PermissionsMixin, IntegerModel, TimestampedModel):
     is_verified = models.BooleanField(default=False)
     user_lock = models.BooleanField(default=False)
     status = models.IntegerField(default=0, help_text='0: Active, 1: Inactive, 2: Deleted')
+    companies = models.ManyToManyField('company.Company', related_name='staff', help_text='The companies this user has access to')
+    branches = models.ManyToManyField('company.Branch', related_name='staff', help_text='The branches this user has access to')
 
     USERNAME_FIELD = 'phone_number'
     REQUIRED_FIELDS = []
@@ -101,6 +103,8 @@ class OTP(IntegerModel, TimestampedModel):
     attempts = models.IntegerField(default=0)
     blocked_until = models.DateTimeField(null=True, blank=True, help_text='User blocked from OTP service until this time')
     is_verified = models.BooleanField(default=False, help_text='Whether OTP has been verified')
+    company = models.ForeignKey('company.Company', on_delete=models.SET_NULL, null=True, blank=True, related_name='otps')
+    branch = models.ForeignKey('company.Branch', on_delete=models.SET_NULL, null=True, blank=True, related_name='otps')
 
     class Meta:
         db_table = 'otps'

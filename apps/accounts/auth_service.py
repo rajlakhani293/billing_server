@@ -4,10 +4,10 @@ from django.db import transaction
 from django.utils import timezone
 from datetime import timedelta
 from apps.core.helpers import check_recent_verification, normalize_phone_number, ResponseBuilder, generate_otp
-from apps.accounts.schema import ShopRegistrationSchema
+from apps.accounts.schema import CompanyRegistrationSchema
 from rest_framework_simplejwt.tokens import RefreshToken
 from .models import User, OTP
-from apps.shops.models import Shop
+from apps.company.models import Company, Branch
 from ninja.errors import HttpError
 import re
 import random
@@ -44,7 +44,8 @@ class AuthService:
                     } if user.country else None,
             'pincode': user.pincode,
             'profile_image_url': str(user.profile_image) if user.profile_image else None,
-            'shop_id': user.primary_shop.id if user.primary_shop else None
+            'company_id': user.primary_company.id if user.primary_company else None,
+            'branch_id': user.primary_branch.id if user.primary_branch else None
         }
 
     @staticmethod
@@ -52,10 +53,11 @@ class AuthService:
         """Build login response with tokens and user data"""
         token = RefreshToken.for_user(user)
         
-        # Add user_id and shop_id to the access token payload
+        # Add user_id, company_id, and branch_id to the access token payload
         access_token = token.access_token
         access_token['user_id'] = user.id
-        access_token['shop_id'] = user.primary_shop.id if user.primary_shop else None
+        access_token['company_id'] = user.primary_company.id if user.primary_company else None
+        access_token['branch_id'] = user.primary_branch.id if user.primary_branch else None
         
         return ResponseBuilder.success(
             'Login successful',
@@ -136,18 +138,18 @@ class AuthService:
 
 
     @staticmethod
-    def register_shop(payload: ShopRegistrationSchema) -> dict:
-        """Register a new shop with user - requires valid registration token"""
+    def register_company(payload: CompanyRegistrationSchema) -> dict:
+        """Register a new company with user - requires valid registration token"""
         data = payload.dict()
         
         try:
             # Validate required fields
-            is_valid, errors = ShopService._validate_registration_data(data)
+            is_valid, errors = CompanyService._validate_registration_data(data)
             if not is_valid:
                 return ResponseBuilder.error('Validation Error', errors)
 
             # Validate registration token
-            token_valid, token_message, verified_phone = ShopService._validate_registration_token(
+            token_valid, token_message, verified_phone = CompanyService._validate_registration_token(
                 data['registration_token']
             )
             if not token_valid:
@@ -170,10 +172,10 @@ class AuthService:
                 if User.objects.filter(email=email).exists():
                     return ResponseBuilder.error('Email already registered with another account')
 
-            # Create user and shop in transaction
+            # Create user and company in transaction
             with transaction.atomic():
-                user, shop = ShopService._create_user_and_shop(data, verified_phone)
-                return ShopService._build_response(user, shop)
+                user, company = CompanyService._create_user_and_company(data, verified_phone)
+                return CompanyService._build_response(user, company)
 
         except Exception as e:
             # Handle specific database errors
@@ -192,7 +194,7 @@ class AuthService:
                     'Registration failed: Some information already exists in our system.'
                 )
             else:
-                return ResponseBuilder.error(f'Failed to register shop: {str(e)}')
+                return ResponseBuilder.error(f'Failed to register company: {str(e)}')
 
     @staticmethod
     def send_login_otp(phone_number: str) -> dict:
@@ -303,53 +305,71 @@ class AuthService:
     def get_session_data(request) -> dict:
         """Get comprehensive user session data"""
         try:
-            # Extract user and shop from authenticated request
+            # Extract user and company from authenticated request
             auth_data = request.auth
             if not auth_data:
                 return ResponseBuilder.error("Authentication required")
             
             user = auth_data['user']
-            shop = auth_data['shop']
+            company = auth_data.get('company')
+            branch = auth_data.get('branch')
             
-            # Get user's shops
-            shops = user.shops.all()
+            # Get user's companies
+            companies = user.companies.all()
                  
-            # Build shop list with enriched data
-            shop_list = []
-            for shop_item in shops:
-                shop_data = {
-                    'shop_id': shop_item.id,
-                    'shop_code': shop_item.shop_code,
-                    'shop_name': shop_item.shop_name,
-                    'legal_name': shop_item.legal_name,
-                    'email': shop_item.email,
-                    'phone_number': shop_item.phone_number,
-                    'tax_no': shop_item.tax_no,
-                    'pan_no': shop_item.pan_no,
-                    'address': shop_item.address,
-                    'pincode': shop_item.pincode,
+            # Build company list with enriched data
+            company_list = []
+            for company_item in companies:
+                company_data = {
+                    'company_id': company_item.id,
+                    'company_code': company_item.company_code,
+                    'company_name': company_item.company_name,
+                    'legal_name': company_item.legal_name,
+                    'email': company_item.email,
+                    'phone_number': company_item.phone_number,
+                    'tax_no': company_item.tax_no,
+                    'pan_no': company_item.pan_no,
+                    'address': company_item.address,
+                    'pincode': company_item.pincode,
                     'city': {
-                        'id': shop_item.city.id if shop_item.city else None,
-                        'name': shop_item.city.name if shop_item.city else None
-                    } if shop_item.city else None,
+                        'id': company_item.city.id if company_item.city else None,
+                        'name': company_item.city.name if company_item.city else None
+                    } if company_item.city else None,
                     'state': {
-                        'id': shop_item.state.id if shop_item.state else None,
-                        'name': shop_item.state.name if shop_item.state else None
-                    } if shop_item.state else None,
+                        'id': company_item.state.id if company_item.state else None,
+                        'name': company_item.state.name if company_item.state else None
+                    } if company_item.state else None,
                     'country': {
-                        'id': shop_item.country.id if shop_item.country else None,
-                        'name': shop_item.country.name if shop_item.country else None
-                    } if shop_item.country else None,
-                    'logo_image_url': str(shop_item.logo_image) if shop_item.logo_image else None,
-                    'default_shop': shop_item.default_shop,
-                    'status': shop_item.status,
+                        'id': company_item.country.id if company_item.country else None,
+                        'name': company_item.country.name if company_item.country else None
+                    } if company_item.country else None,
+                    'logo_image_url': str(company_item.logo_image) if company_item.logo_image else None,
+                    'default_company': company_item.default_company,
+                    'status': company_item.status,
                 }
-                shop_list.append(shop_data)
+                company_list.append(company_data)
             
-            # Current shop (from token)
-            current_shop = None
-            if shop:
-                current_shop = next((shop_item for shop_item in shop_list if shop_item['shop_id'] == shop.id), None)
+            # Current company (from token)
+            current_company = None
+            if company:
+                current_company = next((company_item for company_item in company_list if company_item['company_id'] == company.id), None)
+
+            # Branch list
+            branches = user.branches.all()
+            branch_list = []
+            for branch_item in branches:
+                branch_list.append({
+                    'branch_id': branch_item.id,
+                    'branch_code': branch_item.branch_code,
+                    'branch_name': branch_item.branch_name,
+                    'company_id': branch_item.company_id,
+                    'status': branch_item.status,
+                })
+
+            # Current branch (from token)
+            current_branch = None
+            if branch:
+                current_branch = next((branch_item for branch_item in branch_list if branch_item['branch_id'] == branch.id), None)
             
             # Enriched user data
             enriched_user = {
@@ -367,8 +387,10 @@ class AuthService:
             return ResponseBuilder.success(
                 'Session data retrieved successfully',
                 {
-                    'shop_list': shop_list,
-                    'shop': current_shop,
+                    'company_list': company_list,
+                    'company': current_company,
+                    'branch_list': branch_list,
+                    'branch': current_branch,
                     'user': enriched_user,
                 }
             )
@@ -376,50 +398,76 @@ class AuthService:
             return ResponseBuilder.error(f'Failed to get session data: {str(e)}')
 
 # ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-# Shop Service
+# Company Service
 # ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-class ShopService:
+class CompanyService:
     
     @staticmethod
-    def generate_shop_code(shop_name: str) -> str:
-        """Generate unique shop code with industry best practices"""
+    def generate_company_code(company_name: str) -> str:
+        """Generate unique company code with industry best practices"""
         
-        # Clean and normalize shop name
-        clean_name = re.sub(r'[^\w\s]', '', shop_name)
+        # Clean and normalize company name
+        clean_name = re.sub(r'[^\w\s]', '', company_name)
         clean_name = re.sub(r'\s+', '', clean_name)
         
-        # Take first 6 characters of shop name (uppercase)
+        # Take first 6 characters of company name (uppercase)
         prefix = clean_name[:6].upper()
         
         # Generate random 4-digit suffix
         suffix = ''.join(random.choices(string.digits, k=4))
         
-        # Combine to create shop code
-        shop_code = f"{prefix}{suffix}"
+        # Combine to create company code
+        company_code = f"{prefix}{suffix}"
         
         # Ensure uniqueness, regenerate if exists
         attempts = 0
         max_attempts = 10
         
-        while Shop.objects.filter(shop_code=shop_code).exists() and attempts < max_attempts:
+        while Company.objects.filter(company_code=company_code).exists() and attempts < max_attempts:
             suffix = ''.join(random.choices(string.digits, k=4))
-            shop_code = f"{prefix}{suffix}"
+            company_code = f"{prefix}{suffix}"
             attempts += 1
         
         if attempts >= max_attempts:
             # Fallback to timestamp-based code
             import time
             timestamp = str(int(time.time()))[-6:]
-            shop_code = f"SHOP{timestamp}"
+            company_code = f"COMPANY{timestamp}"
         
-        return shop_code
+        return company_code
+
+    @staticmethod
+    def generate_branch_code(company_name: str, branch_name: str) -> str:
+        """Generate unique branch code based on company and branch name"""
+        clean_company = re.sub(r'[^\w\s]', '', company_name)
+        clean_company = re.sub(r'\s+', '', clean_company)
+        clean_branch = re.sub(r'[^\w\s]', '', branch_name)
+        clean_branch = re.sub(r'\s+', '', clean_branch)
+
+        prefix = (clean_company[:3] + clean_branch[:3]).upper()
+        suffix = ''.join(random.choices(string.digits, k=4))
+        branch_code = f"{prefix}{suffix}"
+
+        attempts = 0
+        max_attempts = 10
+        while Branch.objects.filter(branch_code=branch_code).exists() and attempts < max_attempts:
+            suffix = ''.join(random.choices(string.digits, k=4))
+            branch_code = f"{prefix}{suffix}"
+            attempts += 1
+
+        if attempts >= max_attempts:
+            import time
+            timestamp = str(int(time.time()))[-6:]
+            branch_code = f"BR{timestamp}"
+
+        return branch_code
     
     @staticmethod
     def _validate_registration_data(data: dict) -> tuple[bool, dict]:
         """Validate required registration fields"""
         required_fields = {
             'registration_token': 'Registration Token',
-            'shop_name': 'Shop Name',
+            'company_name': 'Company Name',
             'country': 'Country',
             'state': 'State',
             'city': 'City'
@@ -467,8 +515,8 @@ class ShopService:
             return False, "Invalid registration token", None
     
     @staticmethod
-    def _create_user_and_shop(data: dict, phone_number: str) -> tuple[User, Shop]:
-        """Create user and shop in a transaction"""
+    def _create_user_and_company(data: dict, phone_number: str) -> tuple[User, Company]:
+        """Create user and company in a transaction"""
         # Handle email - accept null or empty string as None
         email = data.get("email")
         if email == "" or email is None:
@@ -492,16 +540,16 @@ class ShopService:
             user.set_password(data["password"])
             user.save()
 
-        # Generate unique shop code
-        shop_code = ShopService.generate_shop_code(data["shop_name"])
+        # Generate unique company code
+        company_code = CompanyService.generate_company_code(data["company_name"])
         
-        # Check if this is the first shop for this user
-        existing_shops_count = Shop.objects.filter(owner=user).count()
-        is_first_shop = existing_shops_count == 0
+        # Check if this is the first company for this user
+        existing_companies_count = Company.objects.filter(owner=user).count()
+        is_first_company = existing_companies_count == 0
 
-        shop = Shop.objects.create(
-            shop_code=shop_code,
-            shop_name=data["shop_name"],
+        company = Company.objects.create(
+            company_code=company_code,
+            company_name=data["company_name"],
             legal_name=data.get("legal_name"),
             business_type_id=data.get("business_type_id", 0),
             tax_no=data.get("tax_no"),
@@ -513,25 +561,43 @@ class ShopService:
             city_id=data["city"],
             phone_number=phone_number,
             email=email,  # Use the same processed email (None if null or empty)
-            default_shop=1 if is_first_shop else 0,  # First shop becomes default
+            default_company=1 if is_first_company else 0,  # First company becomes default
             owner=user
         )
 
-        user.primary_shop = shop
-        user.shops.add(shop)
+        # Create a default branch for the new company
+        branch_name = "Main Branch"
+        branch_code = CompanyService.generate_branch_code(data["company_name"], branch_name)
+        branch = Branch.objects.create(
+            branch_code=branch_code,
+            branch_name=branch_name,
+            phone_number=phone_number,
+            email=email,
+            address=data.get("address"),
+            pincode=data.get("pincode"),
+            country_id=data["country"],
+            state_id=data["state"],
+            city_id=data["city"],
+            company=company,
+        )
+
+        user.primary_company = company
+        user.companies.add(company)
+        user.primary_branch = branch
+        user.branches.add(branch)
         user.save()
 
         OTP.objects.filter(phone_number=phone_number).delete()
         
-        return user, shop
+        return user, company
     
     @staticmethod
-    def _build_response(user: User, shop: Shop) -> dict:
+    def _build_response(user: User, company: Company) -> dict:
         """Build successful registration response"""
         refresh = RefreshToken.for_user(user)
         
         return ResponseBuilder.success(
-            'Shop registered successfully',
+            'Company registered successfully',
             None,
         )
 

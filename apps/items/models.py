@@ -1,13 +1,14 @@
 from django.db import models
 from apps.core.models import IntegerModel, TimestampedModel
-from apps.shops.models import Shop
+from apps.company.models import Company, Branch
 from apps.settings.models import Brand
 
 class ItemCategory(IntegerModel, TimestampedModel):
     category_name = models.CharField(max_length=150, blank=False, null=False, help_text='Category name')
     description = models.TextField(blank=True, null=True, help_text='Category description')
     status = models.IntegerField(default=0, help_text='0: Active, 1: Inactive, 2: Deleted')
-    shop = models.ForeignKey(Shop, on_delete=models.CASCADE, related_name='item_categories', help_text='Associated shop')
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='item_categories', help_text='Associated company')
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name='item_categories', null=True, blank=True, help_text='Associated branch')
 
     class Meta:
         db_table = 'item_categories'
@@ -15,10 +16,10 @@ class ItemCategory(IntegerModel, TimestampedModel):
         verbose_name_plural = 'Item Categories'
         ordering = ['category_name']
         indexes = [
-            models.Index(fields=['shop', 'category_name']),
+            models.Index(fields=['company', 'branch', 'category_name']),
             models.Index(fields=['status']),
         ]
-        unique_together = [['shop', 'category_name']]
+        unique_together = [['company', 'branch', 'category_name']]
         constraints = [
         models.CheckConstraint(
             check=~models.Q(category_name=""), 
@@ -34,7 +35,8 @@ class ItemUnit(IntegerModel, TimestampedModel):
     unit_name = models.CharField(max_length=100, blank=False, null=False, help_text='Unit name (e.g., Kilogram)')
     short_name = models.CharField(max_length=50, help_text='Short name (e.g., kg)')
     status = models.IntegerField(default=0, help_text='0: Active, 1: Inactive, 2: Deleted')
-    shop = models.ForeignKey(Shop, on_delete=models.CASCADE, related_name='item_units', help_text='Associated shop')
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='item_units', help_text='Associated company')
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name='item_units', null=True, blank=True, help_text='Associated branch')
 
     class Meta:
         db_table = 'item_units'
@@ -42,10 +44,10 @@ class ItemUnit(IntegerModel, TimestampedModel):
         verbose_name_plural = 'Item Units'
         ordering = ['unit_name']
         indexes = [
-            models.Index(fields=['shop', 'unit_name']),
+            models.Index(fields=['company', 'branch', 'unit_name']),
             models.Index(fields=['status']),
         ]
-        unique_together = [['shop', 'unit_name']]
+        unique_together = [['company', 'branch', 'unit_name']]
 
     def __str__(self):
         return f"{self.unit_name} ({self.short_name})"
@@ -77,9 +79,10 @@ class Item(IntegerModel, TimestampedModel):
     brand = models.ForeignKey(Brand, on_delete=models.SET_NULL, null=True, blank=True, related_name='brand', help_text='Brand name')
     barcode = models.CharField(max_length=50, blank=True, null=True, help_text='Barcode', unique=True)
     
-    # Status and Shop
+    # Status and Company
     status = models.IntegerField(default=0, help_text='0: Active, 1: Inactive, 2: Deleted')
-    shop = models.ForeignKey(Shop, on_delete=models.CASCADE, related_name='items', help_text='Associated shop')
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='items', help_text='Associated company')
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name='items', null=True, blank=True, help_text='Associated branch')
     
     class Meta:
         db_table = 'items'
@@ -87,15 +90,15 @@ class Item(IntegerModel, TimestampedModel):
         verbose_name_plural = 'Items'
         ordering = ['item_name']
         unique_together = [
-            ['shop', 'item_code'], 
-            ['shop', 'item_name'], 
-            ['shop', 'barcode']    
+            ['company', 'branch', 'item_code'], 
+            ['company', 'branch', 'item_name'], 
+            ['company', 'branch', 'barcode']    
         ]
         indexes = [
-            models.Index(fields=['shop', 'item_code']),
-            models.Index(fields=['shop', 'item_name']),
+            models.Index(fields=['company', 'branch', 'item_code']),
+            models.Index(fields=['company', 'branch', 'item_name']),
             models.Index(fields=['status']),
-            models.Index(fields=['shop','brand']),
+            models.Index(fields=['company', 'branch', 'brand']),
         ]
     
     def __str__(self):
@@ -134,7 +137,8 @@ class StockLedger(IntegerModel, TimestampedModel):
     reference_id = models.IntegerField(blank=True, null=True, help_text="Source document ID")
     note = models.TextField(blank=True, null=True)
     status = models.IntegerField(default=0, help_text="0: Active, 1: Inactive, 2: Deleted")
-    shop = models.ForeignKey(Shop, on_delete=models.CASCADE, related_name="stock_ledger_entries")
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="stock_ledger_entries")
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name="stock_ledger_entries", null=True, blank=True)
 
     class Meta:
         db_table = "stock_ledger"
@@ -142,7 +146,7 @@ class StockLedger(IntegerModel, TimestampedModel):
         verbose_name_plural = "Stock Ledger"
         ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=["shop", "item", "created_at"]),
+            models.Index(fields=["company", "branch", "item", "created_at"]),
             models.Index(fields=["movement_type", "created_at"]),
             models.Index(fields=["reference_type", "reference_id"]),
             models.Index(fields=["status"]),

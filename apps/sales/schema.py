@@ -17,6 +17,22 @@ class SalesTransactionSchema(Schema):
     class Config:
         from_attributes = True
 
+class SalesReturnTransactionIn(Schema):
+    sales_transaction_id: int
+    return_quantity: Decimal
+
+    @field_validator('return_quantity', mode='before')
+    @classmethod
+    def validate_return_quantity(cls, v):
+        try:
+            qty = Decimal(str(v))
+        except (ValueError, TypeError):
+            raise ValueError("Return quantity must be a valid decimal number")
+
+        if qty <= 0:
+            raise ValueError("Return quantity must be greater than 0")
+        return qty
+
 class SalesIn(Schema):
     party_id: Optional[int] = None
     sales_date: Optional[date] = None
@@ -84,31 +100,11 @@ class SalesIn(Schema):
                 raise ValueError("Paid amount must be 0 or greater when payment mode is Partial")
         return self
 
-class SalesReturnTransactionIn(Schema):
-    sales_transaction_id: int
-    return_quantity: Decimal
-
-    @field_validator('return_quantity', mode='before')
-    @classmethod
-    def validate_return_quantity(cls, v):
-        try:
-            qty = Decimal(str(v))
-        except (ValueError, TypeError):
-            raise ValueError("Return quantity must be a valid decimal number")
-
-        if qty <= 0:
-            raise ValueError("Return quantity must be greater than 0")
-        return qty
-
-class SalesReturnIn(Schema):
-    notes: Optional[str] = None
-    transactions: List[SalesReturnTransactionIn]
-
-class SalesRevertIn(Schema):
-    notes: Optional[str] = None
-
 class SalesUpdateIn(Schema):
     return_notes: Optional[str] = None
     update_notes: Optional[str] = None
     return_transactions: Optional[List[SalesReturnTransactionIn]] = []
     add_transactions: Optional[List[SalesTransactionSchema]] = []
+
+class SalesRevertIn(Schema):
+    notes: Optional[str] = None

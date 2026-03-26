@@ -1,5 +1,4 @@
-from django.db import transaction as db_transaction
-from django.db.models import Q, Sum, Case, When, Value, F
+from django.db.models import Q, Sum
 from ninja.errors import HttpError
 import os
 import time
@@ -8,7 +7,6 @@ from pathlib import Path
 from django.conf import settings
 from django.core.files.storage import default_storage
 from django.forms.models import model_to_dict
-from datetime import datetime
 
 def uploadFile(files, subfolder="", old_file_name=None):
     """
@@ -71,23 +69,26 @@ def uploadFile(files, subfolder="", old_file_name=None):
 
 def get_auth_context(request):
     user_id = None
-    shop_id = None
+    company_id = None
+    branch_id = None
     
     if isinstance(request.auth, dict):
         user_id = request.auth.get('user').id if request.auth.get('user') else None
-        shop_id = request.auth.get('shop').id if request.auth.get('shop') else None
+        company_id = request.auth.get('company').id if request.auth.get('company') else None
+        branch_id = request.auth.get('branch').id if request.auth.get('branch') else None
     else:
         # Fallback for object-based auth or legacy
         user_id = getattr(request.auth, 'user_id', None)
-        shop_id = getattr(request.auth, 'shop_id', None)
+        company_id = getattr(request.auth, 'company_id', None)
+        branch_id = getattr(request.auth, 'branch_id', None)
     
-    if not user_id or not shop_id:
+    if not user_id or not company_id or not branch_id:
         raise HttpError(403, "Authentication context missing")
         
-    return {"user_id": user_id, "shop_id": shop_id}
+    return {"user_id": user_id, "company_id": company_id, "branch_id": branch_id}
 
 
-def serializeModelInstance(instance):
+def serializeModelInstance(instance, include_configs=None):
     if isinstance(instance, dict):
         return instance
 
@@ -109,7 +110,62 @@ def serializeModelInstance(instance):
                 data[field.name] = file_obj.name
             else:
                 data[field.name] = None
+    
+    # Handle related objects that might be prefetched
+    if include_configs:
+        for include_config in include_configs:
+            if isinstance(include_config, dict):
+                as_name = include_config.get('as')
+                attributes = include_config.get('attributes', [])
+                included_model = include_config.get('model')
                 
+                if hasattr(instance, as_name):
+                    related_obj = getattr(instance, as_name)
+                    if related_obj:
+                        if hasattr(related_obj, 'all'):  # Reverse ForeignKey or ManyToMany
+                            related_data = [serializeModelInstance(item) for item in related_obj.all()]
+                        else:  # Single related object
+                            related_data = serializeModelInstance(related_obj)
+                        
+                        # Check if this is a forward relationship (should not be flattened)
+                        is_forward_relationship = False
+                        if included_model:
+                            for field in instance._meta.fields:
+                                if hasattr(field, 'remote_field') and field.remote_field:
+                                    if field.remote_field.model == included_model:
+                                        is_forward_relationship = True
+                                        break
+                        
+                        # Check if attributes is empty array - only flatten for reverse relationships
+                        if attributes == [] and not is_forward_relationship:
+                            if isinstance(related_data, list):
+                                # For multiple related objects, we can't flatten, keep as array
+                                data[as_name] = related_data
+                            else:
+                                # For single related object, flatten the fields
+                                if isinstance(related_data, dict):
+                                    for key, value in related_data.items():
+                                        if key != 'id':  # Avoid overwriting the main ID
+                                            data[key] = value
+                                else:
+                                    data[as_name] = related_data
+                        else:
+                            # Keep as nested object with only specified attributes
+                            if isinstance(related_data, list):
+                                data[as_name] = [
+                                    {attr: item.get(attr) for attr in attributes if attr in item}
+                                    for item in related_data
+                                ]
+                            elif isinstance(related_data, dict):
+                                if attributes:  # Only filter if specific attributes are requested
+                                    data[as_name] = {attr: related_data.get(attr) for attr in attributes if attr in related_data}
+                                else:  # Include all fields for forward relationships
+                                    data[as_name] = related_data
+                            else:
+                                data[as_name] = related_data
+                    else:
+                        data[as_name] = None
+    
     return data
 
 class CommonQuery:
@@ -141,8 +197,10 @@ class CommonQuery:
         if require_tenant_fields and request:
             try:
                 ctx = get_auth_context(request)
-                if "shop" in model_field_names and "shop_id" not in filter_kwargs:
-                    filter_kwargs["shop_id"] = ctx["shop_id"]
+                if "company" in model_field_names and "company_id" not in filter_kwargs:
+                    filter_kwargs["company_id"] = ctx["company_id"]
+                if "branch" in model_field_names and "branch_id" not in filter_kwargs:
+                    filter_kwargs["branch_id"] = ctx["branch_id"]
             except:
                 pass
 
@@ -171,9 +229,10 @@ class CommonQuery:
             # Get list of fields in the model
             model_fields = [f.name for f in model._meta.get_fields()]
             
-            if 'shop' in model_fields:
-                enriched_data['shop_id'] = ctx['shop_id']
-                
+            if 'company' in model_fields:
+                enriched_data['company_id'] = ctx['company_id']
+            if 'branch' in model_fields:
+                enriched_data['branch_id'] = ctx['branch_id']
             if 'user' in model_fields:
                 enriched_data['user_id'] = ctx['user_id']
             
@@ -207,25 +266,79 @@ class CommonQuery:
         if require_tenant_fields and request:
             try:
                 ctx = get_auth_context(request)
-                if 'shop' in model_field_names and 'shop_id' not in filter_kwargs:
-                    filter_kwargs['shop_id'] = ctx['shop_id']
+                if 'company' in model_field_names and 'company_id' not in filter_kwargs:
+                    filter_kwargs['company_id'] = ctx['company_id']
+                if 'branch' in model_field_names and 'branch_id' not in filter_kwargs:
+                    filter_kwargs['branch_id'] = ctx['branch_id']
             except:
                 pass
 
         # 4. Execute
         queryset = model.objects.filter(**filter_kwargs)
         
-        # Options logic (select_related, attributes)
+        # Options logic (select_related, attributes, include)
+        include_configs = None
         if options:
             if options.get('select_related'):
                  queryset = queryset.select_related(*options['select_related'])
+            
+            # Handle include option (similar to Node.js sequelize include)
+            include_configs = options.get('include')
+            if include_configs:
+                for include_config in include_configs:
+                    if isinstance(include_config, dict):
+                        included_model = include_config.get('model')
+                        as_name = include_config.get('as')
+                        
+                        if included_model and as_name:
+                         
+                            try:
+                                is_forward_relationship = False
+                                
+                                
+                                for field in model._meta.fields:
+                                    if hasattr(field, 'remote_field') and field.remote_field:
+                                        if field.remote_field.model == included_model:
+                                            is_forward_relationship = True
+                                            break
+                                
+                                if is_forward_relationship:
+                                    queryset = queryset.select_related(as_name)
+                                else:
+                                    queryset = queryset.prefetch_related(as_name)
+                                    
+                            except Exception as e:
+                                try:
+                                    queryset = queryset.prefetch_related(as_name)
+                                except:
+                                    pass
+                                try:
+                                    queryset = queryset.select_related(as_name)
+                                except:
+                                    pass
+            
             if options.get('attributes'):
-                 queryset = queryset.values(*options['attributes'])
-                 obj = queryset.first()
-                 return obj # values returns dict
+                if include_configs:
+                    obj = queryset.first()
+                    if obj:
+                        serialized_data = serializeModelInstance(obj, include_configs)
+                        main_attributes = options['attributes']
+                        filtered_data = {}
+                        for attr in main_attributes:
+                            if attr in serialized_data:
+                                filtered_data[attr] = serialized_data[attr]
+                        for key, value in serialized_data.items():
+                            if key not in filtered_data and key not in main_attributes:
+                                filtered_data[key] = value
+                        return filtered_data
+                    return None
+                else:
+                    queryset = queryset.values(*options['attributes'])
+                    obj = queryset.first()
+                    return obj
         
         obj = queryset.first()
-        return serializeModelInstance(obj)
+        return serializeModelInstance(obj, include_configs)
 
     @staticmethod
     def updateRecordById(model, record_id, data, request, require_tenant_fields=True):
@@ -233,17 +346,17 @@ class CommonQuery:
         
         if isinstance(record_id, list):
             filter_kwargs['id__in'] = record_id
-            is_bulk = True
         else:
             filter_kwargs['id'] = record_id
-            is_bulk = False
         if require_tenant_fields and request:
             try:
                 model_fields = [f.name for f in model._meta.get_fields()]
                 ctx = get_auth_context(request)
                 
-                if 'shop' in model_fields:
-                    filter_kwargs['shop_id'] = ctx['shop_id']
+                if 'company' in model_fields:
+                    filter_kwargs['company_id'] = ctx['company_id']
+                if 'branch' in model_fields:
+                    filter_kwargs['branch_id'] = ctx['branch_id']
                 if 'user' in model_fields:
                     pass 
             except:
@@ -270,7 +383,6 @@ class CommonQuery:
             if options is None:
                 options = {}
             
-            # Handle JSON parsing if req_body is None and request has JSON body
             if req_body is None and request and hasattr(request, 'content_type') and request.content_type == 'application/json':
                 import json
                 try:
@@ -281,7 +393,6 @@ class CommonQuery:
             if req_body is None:
                 req_body = {}
             
-            # Standardize config for easy access
             standardized_config = []
             for item in field_config:
                 key = item[0]
@@ -319,12 +430,9 @@ class CommonQuery:
             elif status is None and 'status' in model_field_names:
                  filters &= Q(status=0)
 
-            # B. Filter Object (Exact matches)
             req_filters = req_body.get('filter')
             if req_filters and isinstance(req_filters, dict):
                 for k, v in req_filters.items():
-                    # Check if field exists to prevent errors
-                    # Complex lookups (__) might be valid even if direct name differs, but basic check helps
                     if "__" not in k and k not in model_field_names:
                         continue 
                         
@@ -333,16 +441,17 @@ class CommonQuery:
                     elif v is not None and v != "":
                          filters &= Q(**{k: v})
 
-            # C. Explicit Tenant Overrides
-            if req_body.get('shop_id') and 'shop' in model_field_names: filters &= Q(shop_id=req_body['shop_id'])
+            if req_body.get('company_id') and 'company' in model_field_names: filters &= Q(company_id=req_body['company_id'])
+            if req_body.get('branch_id') and 'branch' in model_field_names: filters &= Q(branch_id=req_body['branch_id'])
             if req_body.get('user_id') and 'user' in model_field_names: filters &= Q(user_id=req_body['user_id'])
             
-            # Apply Tenant Context (Automatic)
             if require_tenant_fields and request:
                  try:
                     ctx = get_auth_context(request)
-                    if 'shop' in model_field_names and not req_body.get('shop_id'):
-                        filters &= Q(shop_id=ctx['shop_id'])
+                    if 'company' in model_field_names and not req_body.get('company_id'):
+                        filters &= Q(company_id=ctx['company_id'])
+                    if 'branch' in model_field_names and not req_body.get('branch_id'):
+                        filters &= Q(branch_id=ctx['branch_id'])
                  except:
                     pass
 
@@ -549,8 +658,10 @@ class CommonQuery:
             if require_tenant_fields and request:
                 try:
                     ctx = get_auth_context(request)
-                    if 'shop' in model_field_names and 'shop_id' not in query_filters and 'shop' not in query_filters:
-                        filters &= Q(shop_id=ctx['shop_id'])
+                    if 'company' in model_field_names and 'company_id' not in query_filters and 'company' not in query_filters:
+                        filters &= Q(company_id=ctx['company_id'])
+                    if 'branch' in model_field_names and 'branch_id' not in query_filters and 'branch' not in query_filters:
+                        filters &= Q(branch_id=ctx['branch_id'])
                 except:
                     pass
             
@@ -618,8 +729,10 @@ class CommonQuery:
             if require_tenant_fields and request:
                 try:
                     ctx = get_auth_context(request)
-                    if "shop" in model_field_names and "shop_id" not in query_filters and "shop" not in query_filters:
-                        filters &= Q(shop_id=ctx["shop_id"])
+                    if "company" in model_field_names and "company_id" not in query_filters and "company" not in query_filters:
+                        filters &= Q(company_id=ctx["company_id"])
+                    if "branch" in model_field_names and "branch_id" not in query_filters and "branch" not in query_filters:
+                        filters &= Q(branch_id=ctx["branch_id"])
                 except:
                     pass
 
@@ -663,9 +776,12 @@ class CommonQuery:
         
         if request:
             model_fields = [f.name for f in model._meta.get_fields()]
-            if 'shop' in model_fields:
+            if 'company' in model_fields:
                 ctx = get_auth_context(request)
-                filter_kwargs['shop_id'] = ctx['shop_id']
+                filter_kwargs['company_id'] = ctx['company_id']
+            if 'branch' in model_fields:
+                ctx = get_auth_context(request)
+                filter_kwargs['branch_id'] = ctx['branch_id']
         
         return model.objects.filter(**filter_kwargs).update(status=2)
 
@@ -686,9 +802,12 @@ class CommonQuery:
         if request:
             try:
                 model_fields = [f.name for f in model._meta.get_fields()]
-                if 'shop' in model_fields:
+                if 'company' in model_fields:
                     ctx = get_auth_context(request)
-                    filter_kwargs['shop_id'] = ctx['shop_id']
+                    filter_kwargs['company_id'] = ctx['company_id']
+                if 'branch' in model_fields:
+                    ctx = get_auth_context(request)
+                    filter_kwargs['branch_id'] = ctx['branch_id']
             except:
                 pass
                 

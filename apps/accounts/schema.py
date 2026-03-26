@@ -9,7 +9,7 @@ class VerifyOTPSchema(Schema):
     phone_number: str
     otp_code: str
 
-class ShopRegistrationSchema(Schema):
+class CompanyRegistrationSchema(Schema):
     # Registration Info
     registration_token: str
     
@@ -18,8 +18,8 @@ class ShopRegistrationSchema(Schema):
     email: Optional[str] = None
     password: Optional[str] = None
 
-    # Shop Info (matching Shop model)
-    shop_name: str
+    # Company Info (matching Company model)
+    company_name: str
     legal_name: Optional[str] = None
     business_type_id: Optional[int] = 0
     phone_number: str

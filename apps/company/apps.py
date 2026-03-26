@@ -4,9 +4,9 @@ from django.core.management import call_command
 from django.apps import apps
 
 
-class ShopsConfig(AppConfig):
+class CompanyConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
-    name = 'apps.shops'
+    name = 'apps.company'
 
     def ready(self):
         """

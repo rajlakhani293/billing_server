@@ -145,7 +145,7 @@ class ResponseBuilder:
                         if part.isdigit():
                             continue
                         
-                        if part in ['shop', 'id', 'pk']:
+                        if part in ['company', 'id', 'pk']:
                             continue
                             
                         meaningful_parts.append(part)

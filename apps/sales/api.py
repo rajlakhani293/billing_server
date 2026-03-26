@@ -1,7 +1,7 @@
 from ninja import Router
 from apps.core.auth import AuthBearer
 from .service import SalesService
-from .schema import SalesIn, SalesRevertIn, SalesUpdateIn
+from .schema import SalesIn, SalesUpdateIn, SalesRevertIn
 
 sales_router = Router(tags=['Sales'], auth=AuthBearer())
 
@@ -33,10 +33,7 @@ def getSalesById(request, sales_id: int):
 def getSalesView(request, sales_id: int):
     return SalesService.getInvoiceView(sales_id, request)
 
-@sales_router.post('/{sales_id}/returns')
-def revertSales(request, sales_id: int, payload: SalesRevertIn):
-    return SalesService.revertSale(request, sales_id, payload.dict())
-
 @sales_router.put('/{sales_id}')
 def updateSales(request, sales_id: int, payload: SalesUpdateIn):
     return SalesService.update(request, sales_id, payload.dict())
+

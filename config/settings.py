@@ -55,7 +55,7 @@ INSTALLED_APPS = [
     'corsheaders',
 
     'apps.accounts',
-    'apps.shops',
+    'apps.company',
     'apps.core',
     'apps.sales',
     'apps.items',

@@ -2,7 +2,7 @@ from django.db import models
 from django.core.exceptions import ValidationError
 from apps.core.models import IntegerModel, TimestampedModel
 from apps.settings.models import Party
-from apps.shops.models import Shop
+from apps.company.models import Company, Branch
 
 # Import Item model to avoid circular imports
 Item = None
@@ -34,9 +34,9 @@ class Sales(IntegerModel, TimestampedModel):
     
     # Additional details
     notes = models.TextField(blank=True, null=True, help_text='Additional notes')
-    is_reverted = models.BooleanField(default=False, help_text='True when full sales invoice is reverted')
-    status = models.IntegerField(default=0, help_text='0: Active, 1: Inactive, 2: Deleted')
-    shop = models.ForeignKey(Shop, on_delete=models.CASCADE, related_name='sales', help_text='Shop')
+    status = models.IntegerField(default=0, help_text='0: Active, 1: Inactive, 2: Deleted, 3: Fully Returned')
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='sales', help_text='Company')
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name='sales', null=True, blank=True, help_text='Branch')
     
     class Meta:
         db_table = 'sales'
@@ -47,10 +47,10 @@ class Sales(IntegerModel, TimestampedModel):
             models.Index(fields=['party', 'status']),
             models.Index(fields=['sales_code']),
             models.Index(fields=['payment_mode']),
-            models.Index(fields=['shop', 'sales_date']),
+            models.Index(fields=['company', 'branch', 'sales_date']),
         ]
         unique_together = [
-            ['shop', 'sales_code']
+            ['company', 'branch', 'sales_code']
         ]
     
     def __str__(self):
@@ -89,7 +89,8 @@ class SalesTransaction(IntegerModel, TimestampedModel):
     tax_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text='Tax amount for this item')
     total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text='Total amount for this item') 
     status = models.IntegerField(default=0, help_text='0: Active, 1: Inactive, 2: Deleted')
-    shop = models.ForeignKey(Shop, on_delete=models.CASCADE, related_name='sales_transactions', help_text='Shop')
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='sales_transactions', help_text='Company')
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name='sales_transactions', null=True, blank=True, help_text='Branch')
    
     class Meta:
         db_table = 'sales_transactions'
@@ -117,56 +118,6 @@ class SalesTransaction(IntegerModel, TimestampedModel):
             raise ValidationError('Returned quantity cannot exceed sold quantity.')
 
 
-class SalesReturn(IntegerModel, TimestampedModel):
-    return_code = models.CharField(max_length=50, unique=True, help_text='Unique sales return number')
-    sales = models.ForeignKey(Sales, on_delete=models.CASCADE, related_name='returns', help_text='Original sales invoice')
-    return_date = models.DateTimeField(auto_now_add=True, help_text='Return created time')
-    total_return_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text='Total return amount')
-    notes = models.TextField(blank=True, null=True, help_text='Return notes')
-    status = models.IntegerField(default=0, help_text='0: Active, 1: Inactive, 2: Deleted')
-    shop = models.ForeignKey(Shop, on_delete=models.CASCADE, related_name='sales_returns', help_text='Shop')
-
-    class Meta:
-        db_table = 'sales_returns'
-        verbose_name = 'Sales Return'
-        verbose_name_plural = 'Sales Returns'
-        ordering = ['-created_at']
-        indexes = [
-            models.Index(fields=['shop', 'return_date']),
-            models.Index(fields=['sales', 'status']),
-            models.Index(fields=['return_code']),
-        ]
-        unique_together = [
-            ['shop', 'return_code']
-        ]
-
-    def __str__(self):
-        return f"Sales Return {self.return_code} - Sales {self.sales.sales_code}"
-
-
-class SalesReturnTransaction(IntegerModel, TimestampedModel):
-    sales_return = models.ForeignKey(SalesReturn, on_delete=models.CASCADE, related_name='transactions', help_text='Sales return header')
-    sales_transaction = models.ForeignKey(SalesTransaction, on_delete=models.CASCADE, related_name='return_transactions', help_text='Original sales line')
-    item = models.ForeignKey('items.Item', on_delete=models.CASCADE, related_name='sales_return_transactions', help_text='Returned item')
-    return_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, help_text='Returned quantity')
-    item_rate = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text='Item rate at sale time')
-    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text='Return amount for this line')
-    status = models.IntegerField(default=0, help_text='0: Active, 1: Inactive, 2: Deleted')
-    shop = models.ForeignKey(Shop, on_delete=models.CASCADE, related_name='sales_return_transactions', help_text='Shop')
-
-    class Meta:
-        db_table = 'sales_return_transactions'
-        verbose_name = 'Sales Return Transaction'
-        verbose_name_plural = 'Sales Return Transactions'
-        ordering = ['created_at']
-        indexes = [
-            models.Index(fields=['sales_return', 'item']),
-            models.Index(fields=['sales_transaction']),
-        ]
-
-    def __str__(self):
-        return f"{self.item.item_name} - Return {self.sales_return.return_code}"
-
 
 class CustomerLedger(IntegerModel, TimestampedModel):
     party = models.ForeignKey(Party, on_delete=models.CASCADE, related_name="ledger_entries", help_text="Customer")
@@ -177,7 +128,8 @@ class CustomerLedger(IntegerModel, TimestampedModel):
     year = models.PositiveSmallIntegerField(blank=True, null=True, help_text="Entry year (YYYY)")
     note = models.TextField(blank=True, null=True)
     status = models.IntegerField(default=0, help_text="0: Active, 1: Inactive, 2: Deleted")
-    shop = models.ForeignKey(Shop, on_delete=models.CASCADE, related_name="customer_ledger_entries")
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="customer_ledger_entries")
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name="customer_ledger_entries", null=True, blank=True)
 
     class Meta:
         db_table = "customer_ledger"
@@ -185,7 +137,7 @@ class CustomerLedger(IntegerModel, TimestampedModel):
         verbose_name_plural = "Customer Ledger"
         ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=["shop", "party", "created_at"]),
+            models.Index(fields=["company", "branch", "party", "created_at"]),
             models.Index(fields=["status"]),
         ]
 

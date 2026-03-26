@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from .schema import (
     SendOTPSchema,
     VerifyOTPSchema,
-    ShopRegistrationSchema,
+    CompanyRegistrationSchema,
     LoginSchema,
     LogoutSchema,
     ResetOTPSchema,
@@ -29,10 +29,10 @@ def send_otp(request, payload: SendOTPSchema):
 def verify_otp(request, payload: VerifyOTPSchema):
     return AuthService.verify_otp(payload.dict())
 
-# Register Shop
-@auth_router.post('/register-shop')
-def register_shop(request, payload: ShopRegistrationSchema):
-    return AuthService.register_shop(payload)
+# Register Company
+@auth_router.post('/register-company')
+def register_company(request, payload: CompanyRegistrationSchema):
+    return AuthService.register_company(payload)
 
 # Send OTP for Login
 @auth_router.post('/send-login-otp')
