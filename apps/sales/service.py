@@ -3,9 +3,9 @@ from django.utils import timezone
 from datetime import timedelta
 import json
 from decimal import Decimal
-from apps.core.helpers import ResponseBuilder, generate_sequential_code
+from apps.core.helpers import ResponseBuilder, generateSequentialCode
 from .models import Sales, SalesTransaction, CustomerLedger
-from apps.core.commonQuery import CommonQuery
+from apps.core.tenantQuery import TenantQuery
 from apps.items.service import InventoryService
 from apps.items.models import Item
 from apps.settings.models import Party
@@ -13,9 +13,9 @@ from apps.settings.models import Party
 class SalesService:
 
     @staticmethod
-    def _create_ledger_entry(request, party_id, amount, sales_id=None, note=None):
-        party = CommonQuery.findOneRecordForUpdate(
-            Party, {"id": party_id}, request=request
+    def createLedgerEntry(request, party_id, amount, sales_id=None, note=None):
+        party = TenantQuery.findOneRecordForUpdate(
+            Party, {"id": party_id}, request
         )
         if not party:
             return None
@@ -36,7 +36,7 @@ class SalesService:
         party.save(update_fields=["current_balance", "balance_type", "wallet_balance", "updated_at"])
 
         entry_date = timezone.localdate()
-        CommonQuery.createRecord(
+        TenantQuery.createRecord(
             CustomerLedger,
             {
                 "party_id": party.id,
@@ -86,17 +86,17 @@ class SalesService:
                 payload['balance_amount'] = max(Decimal("0.00"), total_amount - paid_amount)
 
                 # Generate Sales Code
-                payload['sales_code'] = generate_sequential_code(Sales, 'sales_code', 'SL')
+                payload['sales_code'] = generateSequentialCode(Sales, 'sales_code', 'SL')
                 
                 # Create Sales Record
-                sales = CommonQuery.createRecord(Sales, payload, request)
+                sales = TenantQuery.createRecord(Sales, payload, request)
                 
                 # Create Sales Transactions
                 for trans_data in transactions_data:
                     trans_data['sales_id'] = sales['id']
-                    CommonQuery.createRecord(SalesTransaction, trans_data, request)
-                    InventoryService.apply_stock_movement(
-                        request=request,
+                    TenantQuery.createRecord(SalesTransaction, trans_data, request)
+                    InventoryService.applyStockMovement(
+                        request,
                         item_id=trans_data['item_id'],
                         movement_type="SALE",
                         quantity=trans_data['item_quantity'],
@@ -109,8 +109,8 @@ class SalesService:
                 if payload.get("payment_mode") == 3 and party_id:
                     due_amount = max(Decimal("0.00"), total_amount - paid_amount)
                     if due_amount > 0:
-                        SalesService._create_ledger_entry(
-                            request=request,
+                        SalesService.createLedgerEntry(
+                            request,
                             party_id=party_id,
                             amount=due_amount,
                             sales_id=sales["id"],
@@ -142,7 +142,7 @@ class SalesService:
                 ],
             }
             
-            result = CommonQuery.fetchPaginatedData(
+            result = TenantQuery.fetchPaginatedData(
                 Sales, data, fieldConfig, options, request
             )
             
@@ -160,7 +160,7 @@ class SalesService:
     @staticmethod
     def getById(sales_id, request):
         try:
-            sales = CommonQuery.findOneRecord(
+            sales = TenantQuery.findOneRecord(
                 Sales, 
                 {"id": sales_id}, 
                 {
@@ -178,113 +178,11 @@ class SalesService:
         except Exception as e:
             return ResponseBuilder.error(message=str(e), status_code=400)
 
-    # @staticmethod
-    # def getInvoiceView(sales_id, request):
-    #     try:
-    #         sales = CommonQuery.findOneRecord(
-    #             Sales,
-    #             {"id": sales_id},
-    #             {
-    #                 "attributes": [
-    #                     "id",
-    #                     "sales_code",
-    #                     "sales_date",
-    #                     "party_id",
-    #                     "company_id",
-    #                     "subtotal",
-    #                     "tax_amount",
-    #                     "discount_percentage",
-    #                     "discount_amount",
-    #                     "total_amount",
-    #                     "paid_amount",
-    #                     "balance_amount",
-    #                     "payment_mode",
-    #                     "notes",
-    #                     "status",
-    #                     "party__name",
-    #                     "party__phone_number",
-    #                     "party__email",
-    #                     "party__address",
-    #                     "party__pincode",
-    #                     "party__city__name",
-    #                     "party__state__name",
-    #                     "party__country__name",
-    #                 ]
-    #             },
-    #             request,
-    #         )
-    #         if not sales or sales.get("status") == 2:
-    #             raise Exception("Sales record not found")
-
-    #         transactions = CommonQuery.findAllRecords(
-    #             SalesTransaction,
-    #             {"sales": sales["id"]},
-    #             {
-    #                 "attributes": [
-    #                     "id",
-    #                     "item_id",
-    #                     "item__item_code",
-    #                     "item__item_name",
-    #                     "item__primary_unit__short_name",
-    #                     "item_quantity",
-    #                     "returned_quantity",
-    #                     "item_rate",
-    #                     "total_amount",
-    #                     "item_description",
-    #                     "discount_percentage",
-    #                     "discount_amount",
-    #                     "tax_amount",
-    #                 ],
-    #                 "order": ["created_at"],
-    #             },
-    #             request,
-    #         )
-
-    #         returns_data = []
-
-    #         payment_mode_label = dict(Sales.PAYMENT_MODE_CHOICES).get(sales.get("payment_mode"))
-
-    #         invoice_data = {
-    #             "sales": {
-    #                 "id": sales.get("id"),
-    #                 "sales_code": sales.get("sales_code"),
-    #                 "sales_date": sales.get("sales_date"),
-    #                 "created_at": sales.get("created_at"),
-    #                 "subtotal": sales.get("subtotal"),
-    #                 "tax_amount": sales.get("tax_amount"),
-    #                 "discount_percentage": sales.get("discount_percentage"),
-    #                 "discount_amount": sales.get("discount_amount"),
-    #                 "total_amount": sales.get("total_amount"),
-    #                 "paid_amount": sales.get("paid_amount"),
-    #                 "balance_amount": sales.get("balance_amount"),
-    #                 "payment_mode": sales.get("payment_mode"),
-    #                 "payment_mode_label": payment_mode_label,
-    #                 "notes": sales.get("notes"),
-    #                 "status": sales.get("status"),
-    #             },
-    #             "party": {
-    #                 "id": sales.get("party_id"),
-    #                 "name": sales.get("party__name"),
-    #                 "phone_number": sales.get("party__phone_number"),
-    #                 "email": sales.get("party__email"),
-    #                 "address": sales.get("party__address"),
-    #                 "pincode": sales.get("party__pincode"),
-    #                 "city": sales.get("party__city__name"),
-    #                 "state": sales.get("party__state__name"),
-    #                 "country": sales.get("party__country__name"),
-    #             },
-    #             "transactions": transactions,
-    #             "returns": returns_data,
-    #         }
-
-    #         return ResponseBuilder.success(data=invoice_data, message="Sales invoice retrieved successfully")
-    #     except Exception as e:
-    #         return ResponseBuilder.error(message=str(e), status_code=400)
-
+  
     @staticmethod
     def getInvoiceView(sales_id, request):
         try:
-            sales = CommonQuery.findOneRecord(
+            sales = TenantQuery.findOneRecord(
                 Sales, 
                 {"id": sales_id}, 
                 {
@@ -299,7 +197,6 @@ class SalesService:
             if not sales or sales.get("status") == 2:
                 raise Exception("Sales record not found")
 
-           
             return ResponseBuilder.success(data=sales, message="Sales retrieved successfully")
         except Exception as e:
             return ResponseBuilder.error(message=str(e), status_code=400)
@@ -308,8 +205,8 @@ class SalesService:
     def update(request, sales_id: int, payload: dict):
         try:
             with transaction.atomic():
-                sales = CommonQuery.findOneRecordForUpdate(
-                    Sales, {"id": sales_id}, request=request
+                sales = TenantQuery.findOneRecordForUpdate(
+                    Sales, {"id": sales_id}, request
                 )
                 if not sales:
                     raise Exception("Sales record not found")
@@ -332,10 +229,10 @@ class SalesService:
                         sales_transaction_id = row.get("sales_transaction_id")
                         return_qty = Decimal(str(row.get("return_quantity")))
 
-                        sales_transaction = CommonQuery.findOneRecordForUpdate(
+                        sales_transaction = TenantQuery.findOneRecordForUpdate(
                             SalesTransaction,
                             {"id": sales_transaction_id, "sales_id": sales.id},
-                            request=request,
+                            request,
                         )
                         if not sales_transaction:
                             raise Exception(f"Sales transaction {sales_transaction_id} not found")
@@ -350,8 +247,8 @@ class SalesService:
                         sales_transaction.returned_quantity += return_qty
                         sales_transaction.save(update_fields=["returned_quantity", "updated_at"])
 
-                        InventoryService.apply_stock_movement(
-                            request=request,
+                        InventoryService.applyStockMovement(
+                            request,
                             item_id=sales_transaction.item_id,
                             movement_type="SALES_RETURN",
                             quantity=return_qty,
@@ -365,7 +262,7 @@ class SalesService:
                 if add_lines:
                     for trans_data in add_lines:
                         item_id = trans_data.get("item_id")
-                        item = CommonQuery.findOneRecord(
+                        item = TenantQuery.findOneRecord(
                             Item, {"id": item_id}, {}, request
                         )
                         if not item:
@@ -385,7 +282,7 @@ class SalesService:
                         if rate < 0:
                             raise Exception("Unit price cannot be negative")
 
-                        CommonQuery.createRecord(
+                        TenantQuery.createRecord(
                             SalesTransaction,
                             {
                                 "sales_id": sales.id,
@@ -401,8 +298,8 @@ class SalesService:
                             request,
                         )
 
-                        InventoryService.apply_stock_movement(
-                            request=request,
+                        InventoryService.applyStockMovement(
+                            request,
                             item_id=item_id_val,
                             movement_type="SALE",
                             quantity=qty,
@@ -417,8 +314,8 @@ class SalesService:
                         added_total += line_total
 
                     if sales.payment_mode == 3 and sales.party_id and added_total > 0:
-                        SalesService._create_ledger_entry(
-                            request=request,
+                        SalesService.createLedgerEntry(
+                            request,
                             party_id=sales.party_id,
                             amount=added_total,
                             sales_id=sales.id,
@@ -431,8 +328,8 @@ class SalesService:
                         sales.paid_amount = sales.total_amount
 
                     if sales.payment_mode == 3 and sales.party_id:
-                        SalesService._create_ledger_entry(
-                            request=request,
+                        SalesService.createLedgerEntry(
+                            request,
                             party_id=sales.party_id,
                             amount=-total_return_amount,
                             sales_id=sales.id,
@@ -479,41 +376,16 @@ class SalesService:
         try:
             today = timezone.localdate()
 
-            sales_rows = CommonQuery.findAllRecords(
-                Sales,
-                {},
-                {"attributes": ["total_amount", "paid_amount"]},
-                request,
-            )
-            today_sales_rows = CommonQuery.findAllRecords(
-                Sales,
-                {"sales_date": today},
-                {"attributes": ["total_amount", "paid_amount"]},
-                request,
-            )
+            # Use countRecords and sumRecords for database-level calculations
+            total_sales_count = TenantQuery.countRecords(Sales, {}, request)
+            total_sales_amount = TenantQuery.sumRecords(Sales, "total_amount", {}, request)
 
-            total_sales_count = len(sales_rows)
-            total_sales_amount = sum(
-                (row.get("total_amount") or Decimal("0.00")) for row in sales_rows
-            ) if sales_rows else Decimal("0.00")
-            today_sales_count = len(today_sales_rows)
-            today_sales_amount = sum(
-                (row.get("total_amount") or Decimal("0.00")) for row in today_sales_rows
-            ) if today_sales_rows else Decimal("0.00")
-            today_collection = sum(
-                (row.get("paid_amount") or Decimal("0.00")) for row in today_sales_rows
-            ) if today_sales_rows else Decimal("0.00")
+            today_sales_count = TenantQuery.countRecords(Sales, {"sales_date": today}, request)
+            today_sales_amount = TenantQuery.sumRecords(Sales, "total_amount", {"sales_date": today}, request)
+            today_collection = TenantQuery.sumRecords(Sales, "paid_amount", {"sales_date": today}, request)
 
-            items_rows = CommonQuery.findAllRecords(
-                Item,
-                {},
-                {"attributes": ["current_stock"]},
-                request,
-            )
-            items_count = len(items_rows)
-            total_stock = sum(
-                (row.get("current_stock") or Decimal("0.00")) for row in items_rows
-            ) if items_rows else Decimal("0.00")
+            items_count = TenantQuery.countRecords(Item, {}, request)
+            total_stock = TenantQuery.sumRecords(Item, "current_stock", {}, request)
 
             return ResponseBuilder.success(
                 data={
@@ -568,7 +440,7 @@ class SalesService:
                 start_date = today
                 end_date = today
 
-            qs = CommonQuery.findAllRecords(
+            qs = TenantQuery.findAllRecords(
                 Sales,
                 {
                     "sales_date__gte": start_date,
@@ -657,7 +529,7 @@ class SalesService:
             today = timezone.localdate()
             start_date = today - timedelta(days=days)
 
-            tx_rows = CommonQuery.findAllRecords(
+            tx_rows = TenantQuery.findAllRecords(
                 SalesTransaction,
                 {
                     "sales__status": 0,

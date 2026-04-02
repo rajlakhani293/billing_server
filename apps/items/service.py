@@ -1,8 +1,8 @@
 from django.db import transaction
 from django.conf import settings
-from apps.core.helpers import ResponseBuilder, generate_sequential_code
+from apps.core.helpers import ResponseBuilder, generateSequentialCode, uploadFile
 from .models import Item, ItemCategory, ItemUnit, StockLedger
-from apps.core.commonQuery import CommonQuery, uploadFile
+from apps.core.tenantQuery import TenantQuery
 from apps.core.constants import ITEM_IMG_FOLDER, ITEM_CODE_PREFIX
 import json
 from decimal import Decimal, InvalidOperation
@@ -12,7 +12,7 @@ class ItemCategoryService:
     def create(data, request):
         try:
             with transaction.atomic():
-                category = CommonQuery.createRecord(ItemCategory, data, request)
+                category = TenantQuery.createRecord(ItemCategory, data, request)
                 return ResponseBuilder.success(
                     data=category,
                     message="Category created successfully"
@@ -24,7 +24,7 @@ class ItemCategoryService:
     def update(data, request, category_id):
         try:
             with transaction.atomic():
-                category = CommonQuery.updateRecordById(ItemCategory, category_id, data, request)
+                category = TenantQuery.updateRecordById(ItemCategory, category_id, data, request)
                 if not category:
                     raise Exception("Category not found")
                 return ResponseBuilder.success(data=category, message="Category updated successfully")
@@ -36,7 +36,7 @@ class ItemCategoryService:
         try:
             fieldConfig = [["category_name", True, True]]
             options = {'attributes': ['id', 'category_name', 'description', 'status']}
-            result = CommonQuery.fetchPaginatedData(ItemCategory, data, fieldConfig, options, request)
+            result = TenantQuery.fetchPaginatedData(ItemCategory, data, fieldConfig, options, request)
             return ResponseBuilder.success(data=result, message="Categories retrieved successfully")
         except Exception as e:
             return ResponseBuilder.error(message=str(e), status_code=400)
@@ -44,10 +44,7 @@ class ItemCategoryService:
     @staticmethod
     def dropdownList(request):
         try:
-            from django.db.models import Count, Q
-            
-            # Get categories with item counts using CommonQuery approach
-            categories_with_counts = CommonQuery.findAllRecords(
+            categories_with_counts = TenantQuery.findAllRecords(
                 ItemCategory, 
                 {}, 
                 {
@@ -57,15 +54,13 @@ class ItemCategoryService:
                 request
             )
             
-            # Get item counts for each category using CommonQuery
             for category in categories_with_counts:
-                item_count = CommonQuery.findAllRecords(
+                item_count = TenantQuery.countRecords(
                     Item,
                     {'category': category['id'], 'status': 0},
-                    {'attributes': ['id']},
                     request
                 )
-                category['item_count'] = len(item_count)
+                category['item_count'] = item_count
             
             return ResponseBuilder.success(data=categories_with_counts, message="Dropdown list retrieved successfully")
         except Exception as e:
@@ -75,7 +70,7 @@ class ItemCategoryService:
     def delete(data, request):
         try:
             with transaction.atomic():
-                count = CommonQuery.softDeleteById(ItemCategory, data.get('ids'), request)
+                count = TenantQuery.softDeleteById(ItemCategory, data.get('ids'), request)
                 if count == 0: raise Exception("Already deleted")
                 return ResponseBuilder.success(message="Categories deleted successfully")
         except Exception as e:
@@ -84,7 +79,7 @@ class ItemCategoryService:
     @staticmethod
     def getById(category_id, request):
         try:
-            category = CommonQuery.findOneRecord(ItemCategory, category_id, {}, request)
+            category = TenantQuery.findOneRecord(ItemCategory, category_id, {}, request)
             if not category or category.get('status') == 2: raise Exception("Category not found")
             return ResponseBuilder.success(data=category, message="Category retrieved successfully")
         except Exception as e:
@@ -96,7 +91,7 @@ class ItemUnitService:
     def create(data, request):
         try:
             with transaction.atomic():
-                unit = CommonQuery.createRecord(ItemUnit, data, request)
+                unit = TenantQuery.createRecord(ItemUnit, data, request)
                 return ResponseBuilder.success(data=unit, message="Unit created successfully")
         except Exception as e:
             return ResponseBuilder.error(message=str(e), status_code=400)
@@ -105,7 +100,7 @@ class ItemUnitService:
     def update(data, request, unit_id):
         try:
             with transaction.atomic():
-                unit = CommonQuery.updateRecordById(ItemUnit, unit_id, data, request)
+                unit = TenantQuery.updateRecordById(ItemUnit, unit_id, data, request)
                 if not unit:
                     raise Exception("Unit not found")
                 return ResponseBuilder.success(data=unit, message="Unit updated successfully")
@@ -117,7 +112,7 @@ class ItemUnitService:
         try:
             fieldConfig = [["unit_name", True, True], ["short_name", True, True]]
             options = {'attributes': ['id', 'unit_name', 'short_name', 'status']}
-            result = CommonQuery.fetchPaginatedData(ItemUnit, data, fieldConfig, options, request)
+            result = TenantQuery.fetchPaginatedData(ItemUnit, data, fieldConfig, options, request)
             return ResponseBuilder.success(data=result, message="Units retrieved successfully")
         except Exception as e:
             return ResponseBuilder.error(message=str(e), status_code=400)
@@ -125,7 +120,7 @@ class ItemUnitService:
     @staticmethod
     def dropdownList(request):
         try:
-            units = CommonQuery.findAllRecords(ItemUnit, {}, {'attributes': ['id', 'unit_name', 'short_name'], 'order': ['unit_name']}, request)
+            units = TenantQuery.findAllRecords(ItemUnit, {}, {'attributes': ['id', 'unit_name', 'short_name'], 'order': ['unit_name']}, request)
             return ResponseBuilder.success(data=units, message="Dropdown list retrieved successfully")
         except Exception as e:
             return ResponseBuilder.error(message=str(e), status_code=400)
@@ -134,7 +129,7 @@ class ItemUnitService:
     def delete(data, request):
         try:
             with transaction.atomic():
-                count = CommonQuery.softDeleteById(ItemUnit, data.get('ids'), request)
+                count = TenantQuery.softDeleteById(ItemUnit, data.get('ids'), request)
                 if count == 0: raise Exception("Already deleted")
                 return ResponseBuilder.success(message="Units deleted successfully")
         except Exception as e:
@@ -143,7 +138,7 @@ class ItemUnitService:
     @staticmethod
     def getById(unit_id, request):
         try:
-            unit = CommonQuery.findOneRecord(ItemUnit, unit_id, {}, request)
+            unit = TenantQuery.findOneRecord(ItemUnit, unit_id, {}, request)
             if not unit or unit.get('status') == 2: raise Exception("Unit not found")
             return ResponseBuilder.success(data=unit, message="Unit retrieved successfully")
         except Exception as e:
@@ -208,11 +203,11 @@ class ItemService:
                 opening_stock = Decimal(str(payload.get('opening_stock', "0.00")))
                 payload['current_stock'] = opening_stock
                 if 'brand' in payload: payload['brand_id'] = payload.pop('brand')
-                payload['item_code'] = generate_sequential_code(Item, 'item_code', ITEM_CODE_PREFIX)
-                item = CommonQuery.createRecord(Item, payload, request)
+                payload['item_code'] = generateSequentialCode(Item, 'item_code', ITEM_CODE_PREFIX)
+                item = TenantQuery.createRecord(Item, payload, request)
 
                 if opening_stock > 0:
-                    CommonQuery.createRecord(
+                    TenantQuery.createRecord(
                         StockLedger,
                         {
                             "item_id": item["id"],
@@ -306,7 +301,7 @@ class ItemService:
                 
                 if 'brand' in payload: payload['brand_id'] = payload.pop('brand')
                 
-                item = CommonQuery.updateRecordById(Item, item_id, payload, request)
+                item = TenantQuery.updateRecordById(Item, item_id, payload, request)
                 if not item:
                     raise Exception("Item not found")
                 
@@ -330,7 +325,7 @@ class ItemService:
     def delete(data, request):
         try:
             with transaction.atomic():
-                count = CommonQuery.softDeleteById(Item, data.get('ids'), request)
+                count = TenantQuery.softDeleteById(Item, data.get('ids'), request)
                 
                 if count == 0:
                     raise Exception("No records found")
@@ -372,7 +367,7 @@ class ItemService:
                 ]
             }
 
-            result = CommonQuery.fetchPaginatedData(
+            result = TenantQuery.fetchPaginatedData(
                 Item, data, fieldConfig, options, request
             )
             
@@ -413,7 +408,7 @@ class ItemService:
     @staticmethod
     def dropdownList(request):
         try:         
-            items = CommonQuery.findAllRecords(
+            items = TenantQuery.findAllRecords(
                 Item, 
                 {},
                 {'attributes': ['id', 'item_name', 'item_code', 'primary_unit__short_name', 'selling_price', 'current_stock', 'description', 'item_images'], 'order': ['item_name']},
@@ -454,7 +449,7 @@ class ItemService:
     @staticmethod
     def getById(item_id, request):
         try:
-            item = CommonQuery.findOneRecord(Item, item_id, {}, request)
+            item = TenantQuery.findOneRecord(Item, item_id, {}, request)
             if not item or item.get('status') == 2: raise Exception("Item not found")
             
             # Add full image URL if item_image exists (legacy)
@@ -493,7 +488,7 @@ class InventoryService:
     ALLOWED_TYPES = INWARD_TYPES | OUTWARD_TYPES
 
     @staticmethod
-    def apply_stock_movement(
+    def applyStockMovement(
         request,
         item_id: int,
         movement_type: str,
@@ -514,8 +509,8 @@ class InventoryService:
         if qty <= 0:
             raise Exception("Quantity must be greater than 0")
 
-        item = CommonQuery.findOneRecordForUpdate(
-            Item, {"id": item_id}, request=request
+        item = TenantQuery.findOneRecordForUpdate(
+            Item, {"id": item_id}, request
         )
         if not item:
             raise Exception("Item not found")
@@ -534,7 +529,7 @@ class InventoryService:
         item.current_stock = new_balance
         item.save(update_fields=["current_stock", "updated_at"])
 
-        CommonQuery.createRecord(
+        TenantQuery.createRecord(
             StockLedger,
             {
                 "item_id": item.id,
@@ -561,8 +556,8 @@ class InventoryService:
     def adjust_stock(request, payload: dict):
         try:
             with transaction.atomic():
-                result = InventoryService.apply_stock_movement(
-                    request=request,
+                result = InventoryService.applyStockMovement(
+                    request,
                     item_id=payload["item_id"],
                     movement_type=payload["movement_type"],
                     quantity=payload["quantity"],
@@ -603,7 +598,7 @@ class InventoryService:
                 ]
             }
 
-            result = CommonQuery.fetchPaginatedData(
+            result = TenantQuery.fetchPaginatedData(
                 StockLedger, data, fieldConfig, options, request
             )
 

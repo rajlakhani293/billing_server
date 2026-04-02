@@ -6,7 +6,7 @@ from ninja import NinjaAPI
 from ninja.errors import ValidationError
 from apps.accounts.api import auth_router
 from apps.core.api import location_router
-from apps.core.helpers import validation_error_handler
+from apps.core.helpers import validationErrorHandler
 from apps.items.api import items_router
 from apps.sales.api import sales_router
 from apps.settings.api import setting_router
@@ -18,7 +18,7 @@ api = NinjaAPI(
     description='API for retail billing software'
 )
 
-api.add_exception_handler(ValidationError, validation_error_handler)
+api.add_exception_handler(ValidationError, validationErrorHandler)
 
 # Add routers
 api.add_router('/auth', auth_router)

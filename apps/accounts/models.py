@@ -6,38 +6,28 @@ from apps.core.models import IntegerModel, TimestampedModel, CountryMaster, Stat
 
 
 class UserManager(BaseUserManager):
-    """Custom user manager for User model"""
-
     def create_user(self, phone_number, password=None, **extra_fields):
-        """Create and return a regular user with phone number"""
         if not phone_number:
-            raise ValueError('Phone number is required')
-
-        # Set default password if none provided
-        if not password:
-            password = 'admin123'
-        
+            raise ValueError('The Phone Number must be set')
         user = self.model(phone_number=phone_number, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
         return user
 
     def create_superuser(self, phone_number, password=None, **extra_fields):
-        """Create and return a superuser"""
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
-        extra_fields.setdefault('is_verified', True)
+        extra_fields.setdefault('is_active', True)
 
         if extra_fields.get('is_staff') is not True:
             raise ValueError('Superuser must have is_staff=True.')
         if extra_fields.get('is_superuser') is not True:
             raise ValueError('Superuser must have is_superuser=True.')
 
-        user = self.create_user(phone_number, **extra_fields)
-        if password:
-            user.set_password(password)
-            user.save(using=self._db)
-        return user
+        return self.create_user(phone_number, password, **extra_fields)
+
+    def get_by_natural_key(self, phone_number):
+        return self.get(phone_number=phone_number)
 
 
 class User(AbstractBaseUser, PermissionsMixin, IntegerModel, TimestampedModel):
@@ -45,8 +35,6 @@ class User(AbstractBaseUser, PermissionsMixin, IntegerModel, TimestampedModel):
     phone_number = models.CharField(max_length=15, unique=True)
     email = models.EmailField(unique=True, max_length=255, blank=True, null=True)
     password = models.CharField(max_length=128, null=True, blank=True)
-    primary_company = models.ForeignKey('company.Company', on_delete=models.SET_NULL, related_name='primary_staff', null=True, blank=True)
-    primary_branch = models.ForeignKey('company.Branch', on_delete=models.SET_NULL, related_name='primary_staff', null=True, blank=True)
     address = models.CharField(max_length=255, blank=True, null=True)
     city = models.ForeignKey(CityMaster, on_delete=models.SET_NULL, null=True, blank=True)
     state = models.ForeignKey(StateMaster, on_delete=models.SET_NULL, null=True, blank=True)
@@ -58,13 +46,14 @@ class User(AbstractBaseUser, PermissionsMixin, IntegerModel, TimestampedModel):
     is_verified = models.BooleanField(default=False)
     user_lock = models.BooleanField(default=False)
     status = models.IntegerField(default=0, help_text='0: Active, 1: Inactive, 2: Deleted')
-    companies = models.ManyToManyField('company.Company', related_name='staff', help_text='The companies this user has access to')
-    branches = models.ManyToManyField('company.Branch', related_name='staff', help_text='The branches this user has access to')
+    branch_access = models.JSONField(default=list, blank=True, help_text='List of branch IDs this user can access')
+    company = models.ForeignKey('company.Company', on_delete=models.SET_NULL, null=True, blank=True, related_name='users', help_text='Primary company of this user')
+    branch = models.ForeignKey('company.Branch', on_delete=models.SET_NULL, null=True, blank=True, related_name='users', help_text='Primary branch of this user')
+
+    objects = UserManager()
 
     USERNAME_FIELD = 'phone_number'
     REQUIRED_FIELDS = []
-
-    objects = UserManager()
 
     class Meta:
         db_table = 'users'
@@ -87,7 +76,6 @@ class User(AbstractBaseUser, PermissionsMixin, IntegerModel, TimestampedModel):
 
 
 class OTP(IntegerModel, TimestampedModel):
-    """OTP model for phone verification with rate limiting"""
 
     phone_number = models.CharField(max_length=15, blank=True, null=True)
     otp_code = models.CharField(max_length=6, help_text='6-digit OTP code')

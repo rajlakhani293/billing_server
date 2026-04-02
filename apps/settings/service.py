@@ -4,7 +4,7 @@ import math
 from decimal import Decimal
 from apps.core.helpers import ResponseBuilder
 from .models import Brand, Tax, Party
-from apps.core.commonQuery import CommonQuery
+from apps.core.tenantQuery import TenantQuery
 from apps.sales.models import CustomerLedger
 
 
@@ -13,7 +13,7 @@ class BrandService:
     def create(data, request):
         try:
             with transaction.atomic():
-                brand = CommonQuery.createRecord(Brand, data, request)
+                brand = TenantQuery.createRecord(Brand, data, request)
                 return ResponseBuilder.success(
                     data=brand,
                     message="Brand created successfully"
@@ -25,7 +25,7 @@ class BrandService:
     def update(data, request, brand_id):
         try:
             with transaction.atomic():
-                brand = CommonQuery.updateRecordById(Brand, brand_id, data, request)
+                brand = TenantQuery.updateRecordById(Brand, brand_id, data, request)
                 if not brand:
                     raise Exception("Brand not found")
                 return ResponseBuilder.success(data=brand, message="Brand updated successfully")
@@ -37,7 +37,7 @@ class BrandService:
         try:
             fieldConfig = [["brand_name", True, True]]
             options = {'attributes': ['id', 'brand_name', 'status']}
-            result = CommonQuery.fetchPaginatedData(Brand, data, fieldConfig, options, request)
+            result = TenantQuery.fetchPaginatedData(Brand, data, fieldConfig, options, request)
             return ResponseBuilder.success(data=result, message="Brands retrieved successfully")
         except Exception as e:
             return ResponseBuilder.error(message=str(e), status_code=400)
@@ -45,7 +45,7 @@ class BrandService:
     @staticmethod
     def dropdownList(request):
         try:
-            brands = CommonQuery.findAllRecords(Brand, {}, {'attributes': ['id', 'brand_name'], 'order': ['brand_name']}, request)
+            brands = TenantQuery.findAllRecords(Brand, {}, {'attributes': ['id', 'brand_name'], 'order': ['brand_name']}, request)
             return ResponseBuilder.success(data=brands, message="Dropdown list retrieved successfully")
         except Exception as e:
             return ResponseBuilder.error(message=str(e), status_code=400)
@@ -54,7 +54,7 @@ class BrandService:
     def delete(data, request):
         try:
             with transaction.atomic():
-                count = CommonQuery.softDeleteById(Brand, data.get('ids'), request)
+                count = TenantQuery.softDeleteById(Brand, data.get('ids'), request)
                 if count == 0: raise Exception("Already deleted")
                 return ResponseBuilder.success(message="Brands deleted successfully")
         except Exception as e:
@@ -63,7 +63,7 @@ class BrandService:
     @staticmethod
     def getById(brand_id, request):
         try:
-            brand = CommonQuery.findOneRecord(Brand, brand_id, {}, request)
+            brand = TenantQuery.findOneRecord(Brand, brand_id, {}, request)
             if not brand or brand.get('status') == 2: raise Exception("Brand not found")
             return ResponseBuilder.success(data=brand, message="Brand retrieved successfully")
         except Exception as e:
@@ -75,7 +75,7 @@ class TaxService:
     def create(data, request):
         try:
             with transaction.atomic():
-                tax = CommonQuery.createRecord(Tax, data, request)
+                tax = TenantQuery.createRecord(Tax, data, request)
                 return ResponseBuilder.success(
                     data=tax,
                     message="Tax created successfully"
@@ -87,7 +87,7 @@ class TaxService:
     def update(data, request, tax_id):
         try:
             with transaction.atomic():
-                tax = CommonQuery.updateRecordById(Tax, tax_id, data, request)
+                tax = TenantQuery.updateRecordById(Tax, tax_id, data, request)
                 if not tax:
                     raise Exception("Tax not found")
                 return ResponseBuilder.success(data=tax, message="Tax updated successfully")
@@ -99,7 +99,7 @@ class TaxService:
         try:
             fieldConfig = [["tax_name", True, True], ["tax_value", True, True]]
             options = {'attributes': ['id', 'tax_name', 'tax_value', 'status']}
-            result = CommonQuery.fetchPaginatedData(Tax, data, fieldConfig, options, request)
+            result = TenantQuery.fetchPaginatedData(Tax, data, fieldConfig, options, request)
             return ResponseBuilder.success(data=result, message="Taxes retrieved successfully")
         except Exception as e:
             return ResponseBuilder.error(message=str(e), status_code=400)
@@ -107,7 +107,7 @@ class TaxService:
     @staticmethod
     def dropdownList(request):
         try:
-            taxes = CommonQuery.findAllRecords(Tax, {}, {'attributes': ['id', 'tax_name', 'tax_value'], 'order': ['tax_name']}, request)
+            taxes = TenantQuery.findAllRecords(Tax, {}, {'attributes': ['id', 'tax_name', 'tax_value'], 'order': ['tax_name']}, request)
             return ResponseBuilder.success(data=taxes, message="Dropdown list retrieved successfully")
         except Exception as e:
             return ResponseBuilder.error(message=str(e), status_code=400)
@@ -116,7 +116,7 @@ class TaxService:
     def delete(data, request):
         try:
             with transaction.atomic():
-                count = CommonQuery.softDeleteById(Tax, data.get('ids'), request)
+                count = TenantQuery.softDeleteById(Tax, data.get('ids'), request)
                 if count == 0: raise Exception("Already deleted")
                 return ResponseBuilder.success(message="Taxes deleted successfully")
         except Exception as e:
@@ -125,7 +125,7 @@ class TaxService:
     @staticmethod
     def getById(tax_id, request):
         try:
-            tax = CommonQuery.findOneRecord(Tax, tax_id, {}, request)
+            tax = TenantQuery.findOneRecord(Tax, tax_id, {}, request)
             if not tax or tax.get('status') == 2: raise Exception("Tax not found")
             return ResponseBuilder.success(data=tax, message="Tax retrieved successfully")
         except Exception as e:
@@ -136,7 +136,7 @@ class PartyService:
     def create(data, request):
         try:
             with transaction.atomic():
-                CommonQuery.createRecord(Party, data, request)
+                TenantQuery.createRecord(Party, data, request)
                 return ResponseBuilder.success(message="Party created successfully")
         except Exception as e:
             return ResponseBuilder.error(message=str(e), status_code=400)
@@ -145,7 +145,7 @@ class PartyService:
     def update(data, request, record_id):
         try:
             with transaction.atomic():
-                CommonQuery.updateRecordById(Party, record_id, data, request)
+                TenantQuery.updateRecordById(Party, record_id, data, request)
                 return ResponseBuilder.success(message="Party updated successfully")
         except Exception as e:
             return ResponseBuilder.error(message=str(e), status_code=400)
@@ -154,7 +154,7 @@ class PartyService:
     def delete(data, request):
         try:
             with transaction.atomic():
-                CommonQuery.softDeleteById(Party, data.get('ids'), request)
+                TenantQuery.softDeleteById(Party, data.get('ids'), request)
                 return ResponseBuilder.success(message="Parties deleted successfully")
         except Exception as e:
             return ResponseBuilder.error(message=str(e), status_code=400)
@@ -170,7 +170,7 @@ class PartyService:
                 ["party_type", False, True],
             ]
  
-            result = CommonQuery.fetchPaginatedData(Party, data, fieldConfig, {}, request)
+            result = TenantQuery.fetchPaginatedData(Party, data, fieldConfig, {}, request)
             return ResponseBuilder.success(data=result, message="Parties retrieved successfully")
         except Exception as e:
             return ResponseBuilder.error(message=str(e), status_code=400)
@@ -178,7 +178,7 @@ class PartyService:
     @staticmethod
     def getById(party_id, request):
         try:
-            party = CommonQuery.findOneRecord(Party, party_id, {}, request)
+            party = TenantQuery.findOneRecord(Party, party_id, {}, request)
             if not party or party.get('status') == 2: raise Exception("Party not found")
             return ResponseBuilder.success(data=party, message="Party retrieved successfully")
         except Exception as e:
@@ -188,7 +188,7 @@ class PartyService:
     def dropdownList(request):
         try:
             # Dropdown usually needs id and name
-            parties = CommonQuery.findAllRecords(
+            parties = TenantQuery.findAllRecords(
                 Party, 
                 {}, 
                 {'attributes': ['id', 'name', 'party_type', 'phone_number'], 'order': ['name']}, 
@@ -201,7 +201,7 @@ class PartyService:
     @staticmethod
     def getPartyCreditDays(party_id, data, request):
         try:
-            result = CommonQuery.findAllRecords(
+            result = TenantQuery.findAllRecords(
                 CustomerLedger,
                 {
                     "month": data["month"],
@@ -253,7 +253,7 @@ class PartyService:
             limit = None if is_fetch_all else (int(limit_val) if limit_val else 10)
             offset = 0 if is_fetch_all else (page - 1) * limit
 
-            ledger_rows = CommonQuery.findAllRecords(
+            ledger_rows = TenantQuery.findAllRecords(
                 CustomerLedger,
                 {"month": month, "year": year},
                 {

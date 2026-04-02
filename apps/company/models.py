@@ -10,7 +10,8 @@ class Company(IntegerModel, TimestampedModel):
     phone_number = models.CharField(max_length=15, blank=True, null=True)
     email = models.EmailField(unique=True, max_length=255, blank=True, null=True)
     password = models.CharField(max_length=128, null=True, blank=True)
-    pan_no = models.CharField(max_length=15, blank=True, null=True)
+    tax_no = models.CharField(max_length=50, blank=True, null=True)
+    pan_no = models.CharField(max_length=10, blank=True, null=True)
     address = models.TextField(blank=True, null=True)
     pincode = models.CharField(max_length=10, blank=True, null=True)
     city = models.ForeignKey(CityMaster, on_delete=models.SET_NULL, related_name='companies', null=True, blank=True)
@@ -18,7 +19,6 @@ class Company(IntegerModel, TimestampedModel):
     country = models.ForeignKey(CountryMaster, on_delete=models.SET_NULL, related_name='companies', null=True, blank=True)
     logo_image = models.ImageField(upload_to='company_logos', blank=True, null=True)
     website_url = models.URLField(blank=True, null=True)
-    default_company = models.IntegerField(default=0, help_text='0:No, 1:Yes')
     status = models.IntegerField(default=0, help_text='0: Active, 1: Inactive, 2: Deleted')
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='owned_companies')
 
@@ -52,4 +52,7 @@ class Branch(IntegerModel, TimestampedModel):
         ordering = ['branch_name']
 
     def __str__(self):
-        return f"{self.branch_name} ({self.company.company_name})"
+        try:
+            return f"{self.branch_name} ({self.company.company_name})"
+        except Company.DoesNotExist:
+            return f"{self.branch_name} (Company not found)"

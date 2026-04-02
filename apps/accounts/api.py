@@ -1,5 +1,5 @@
-from ninja import Router
-from django.contrib.auth import get_user_model
+from ninja import Router, Form, File
+from ninja.files import UploadedFile
 from .schema import (
     SendOTPSchema,
     VerifyOTPSchema,
@@ -11,7 +11,6 @@ from .schema import (
 from .auth_service import AuthService, OTPLimitService
 from apps.core.auth import AuthBearer
 
-User = get_user_model()
 
 auth_router = Router(tags=['Authentication'])
 
@@ -22,22 +21,25 @@ auth_router = Router(tags=['Authentication'])
 # Send Otp for Signup
 @auth_router.post('/send-otp')
 def send_otp(request, payload: SendOTPSchema):
-    return AuthService.send_otp(payload.phone_number)
+    return AuthService.sendOtp(payload.phone_number)
 
 # Verify Otp
 @auth_router.post('/verify-otp')
 def verify_otp(request, payload: VerifyOTPSchema):
-    return AuthService.verify_otp(payload.dict())
+    return AuthService.verifyOtp(payload.dict())
 
 # Register Company
 @auth_router.post('/register-company')
-def register_company(request, payload: CompanyRegistrationSchema):
-    return AuthService.register_company(payload)
+def register_company(request, payload: CompanyRegistrationSchema = Form(...), logo_image: UploadedFile = File(None)):
+    data = payload.dict()
+    if logo_image:
+        data["logo_image"] = logo_image
+    return AuthService.registerCompany(data)
 
 # Send OTP for Login
 @auth_router.post('/send-login-otp')
 def send_login_otp(request, payload: SendOTPSchema):
-    return AuthService.send_login_otp(payload.phone_number)
+    return AuthService.sendLoginOtp(payload.phone_number)
 
 # Login
 @auth_router.post('/login')
@@ -53,12 +55,10 @@ def logout(request, payload: LogoutSchema):
 # OTP Limit Management APIs
 # ================================================================= ================================================================= =================================================================
 
-# Get all users with OTP limit reached (blocked users)
 @auth_router.get('/blocked-users')
 def get_blocked_users(request):
-    return OTPLimitService.get_blocked_users()
+    return OTPLimitService.getBlockedUsers(request)
 
-# Reset OTP timer for a specific user
 @auth_router.post('/reset-otp-limit')
 def reset_otp_limit(request, payload: ResetOTPSchema):
-    return OTPLimitService.reset_otp_limit(payload.phone_number)
+    return OTPLimitService.resetOtpLimit(payload.phone_number, request)

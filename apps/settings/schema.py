@@ -31,7 +31,7 @@ class PartyCreateSchema(Schema):
     city_id: Optional[int] = None
     state_id: Optional[int] = None
     country_id: Optional[int] = None
-    pincode: Optional[str] = None
+    pincode: Optional[int] = None
     balance_type: Optional[int] = None
     customer_category: Optional[int] = None
     
@@ -50,7 +50,7 @@ class PartyUpdateSchema(Schema):
     city_id: Optional[int] = None
     state_id: Optional[int] = None
     country_id: Optional[int] = None
-    pincode: Optional[str] = None
+    pincode: Optional[int] = None
     balance_type: Optional[int] = None
     customer_category: Optional[int] = None
     

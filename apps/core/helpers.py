@@ -8,14 +8,120 @@ from ninja.errors import ValidationError, HttpError
 from django.http import JsonResponse
 import datetime
 from django.http.multipartparser import MultiPartParser
-from django.http.request import QueryDict
+import os
+import time
+from django.conf import settings
+from django.core.files.storage import default_storage
+from django.forms.models import model_to_dict
 
 
-def parse_multipart_request(request):
+def serializeModelInstance(instance, include_configs=None):
+    if isinstance(instance, dict):
+        return instance
+
+    if not instance:
+        return None
+        
+    data = model_to_dict(instance)
+    
+    # Ensure ID is included (model_to_dict excludes AutoField/primary_key by default)
+    if instance.pk:
+         data['id'] = instance.pk
+    
+    # Normalize FK and file fields
+    for field in instance._meta.fields:
+        # File/Image fields
+        if field.get_internal_type() in ['FileField', 'ImageField']:
+            file_obj = getattr(instance, field.name)
+            if file_obj:
+                data[field.name] = file_obj.name
+            else:
+                data[field.name] = None
+            continue
+
+        # Foreign keys -> store id instead of model instance
+        if field.is_relation and hasattr(field, "remote_field") and field.remote_field:
+            try:
+                rel_obj = getattr(instance, field.name)
+                # Use field_name_id for foreign keys to match API expectations
+                data[f"{field.name}_id"] = rel_obj.id if rel_obj else None
+                # Remove the original field name to avoid duplication
+                data.pop(field.name, None)
+            except Exception:
+                pass
+    
+    # Handle related objects that might be prefetched
+    if include_configs:
+        for include_config in include_configs:
+            if isinstance(include_config, dict):
+                as_name = include_config.get('as')
+                attributes = include_config.get('attributes', [])
+                included_model = include_config.get('model')
+                
+                if hasattr(instance, as_name):
+                    related_obj = getattr(instance, as_name)
+                    if related_obj:
+                        if hasattr(related_obj, 'all'):  # Reverse ForeignKey or ManyToMany
+                            related_data = [serializeModelInstance(item) for item in related_obj.all()]
+                        else:  # Single related object
+                            related_data = serializeModelInstance(related_obj)
+                        
+                        # Check if this is a forward relationship (should not be flattened)
+                        is_forward_relationship = False
+                        if included_model:
+                            for field in instance._meta.fields:
+                                if hasattr(field, 'remote_field') and field.remote_field:
+                                    if field.remote_field.model == included_model:
+                                        is_forward_relationship = True
+                                        break
+                        
+                        # Check if attributes is empty array - only flatten for reverse relationships
+                        if attributes == [] and not is_forward_relationship:
+                            if isinstance(related_data, list):
+                                # For multiple related objects, we can't flatten, keep as array
+                                data[as_name] = related_data
+                            else:
+                                # For single related object, flatten the fields
+                                if isinstance(related_data, dict):
+                                    for key, value in related_data.items():
+                                        if key != 'id':  # Avoid overwriting the main ID
+                                            data[key] = value
+                                else:
+                                    data[as_name] = related_data
+                        else:
+                            # Keep as nested object with only specified attributes
+                            if isinstance(related_data, list):
+                                data[as_name] = [
+                                    {attr: item.get(attr) for attr in attributes if attr in item}
+                                    for item in related_data
+                                ]
+                            elif isinstance(related_data, dict):
+                                if attributes:  # Only filter if specific attributes are requested
+                                    data[as_name] = {attr: related_data.get(attr) for attr in attributes if attr in related_data}
+                                else:  # Include all fields for forward relationships
+                                    data[as_name] = related_data
+                            else:
+                                data[as_name] = related_data
+                    else:
+                        data[as_name] = None
+    
+    return data
+
+def jsonsafe(value):
     """
-    Manually parse multipart form data for PUT/PATCH requests.
-    Django only does this automatically for POST.
+    Recursively converts Django model instances and nested structures to JSON-safe dictionaries.
+    Use this function to ensure all API responses are JSON serializable.
     """
+    if isinstance(value, dict):
+        return {k: jsonsafe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [jsonsafe(v) for v in value]
+    # Check for Django model instances
+    if hasattr(value, "_meta") and hasattr(value, "pk"):
+        return serializeModelInstance(value)
+    return value
+
+def parseMultipartRequest(request):
     if request.method in ['PUT', 'PATCH'] and request.content_type.startswith('multipart/form-data'):
         # If files/post are already populated, don't re-parse
         if hasattr(request, '_files') and request._files:
@@ -30,33 +136,26 @@ def parse_multipart_request(request):
         request._files = files
     return request
 
+def getAuthContext(request):
+    user_id = None
+    company_id = None
+    branch_id = None
 
-def check_recent_verification(phone_number: str) -> dict:
-    """Check if phone number was verified in the last 10 minutes"""
-    try:
-        # Normalize phone number
-        normalized_phone = normalize_phone_number(phone_number)
-        
-        ten_minutes_ago = timezone.now() - timedelta(minutes=10)
-        
-        # Check if there's a verified OTP within the last 10 minutes
-        recent_otp = OTP.objects.filter(
-            phone_number=normalized_phone,
-            is_verified=True,
-            updated_at__gte=ten_minutes_ago  
-        ).first()
-        
-        if recent_otp:
-            return {
-                'was_verified_recently': True
-            }
-        
-        return {'was_verified_recently': False}
-        
-    except Exception as e:
-        return {'was_verified_recently': False}
+    if isinstance(request.auth, dict):
+        user_id = request.auth.get('user').id if request.auth.get('user') else None
+        company_id = request.auth.get('company').id if request.auth.get('company') else None
+        branch_id = request.auth.get('branch').id if request.auth.get('branch') else None
+    else:
+        user_id = getattr(request.auth, 'user_id', None)
+        company_id = getattr(request.auth, 'company_id', None)
+        branch_id = getattr(request.auth, 'branch_id', None)
 
-def validation_error_handler(request, exc: ValidationError):
+    if not user_id or not company_id or not branch_id:
+        raise HttpError(403, "Authentication context missing")
+
+    return {"user_id": user_id, "company_id": company_id, "branch_id": branch_id}
+
+def validationErrorHandler(request, exc: ValidationError):
     first_error = exc.errors[0]
     field = str(first_error["loc"][-1])
     error_type = first_error.get("type")
@@ -98,6 +197,60 @@ def validation_error_handler(request, exc: ValidationError):
         "message": message,
     }, status=400)
 
+def uploadFile(files, subfolder="", old_file_name=None):
+    if not files:
+        return {}
+
+    # 1. Normalize files to a list (Handling req.file vs req.files)
+    files_to_process = []
+    if isinstance(files, list):
+        files_to_process = files
+    elif isinstance(files, dict):
+        for key in files:
+            val = files[key]
+            if isinstance(val, list):
+                files_to_process.extend(val)
+            else:
+                files_to_process.append(val)
+    else:
+        files_to_process = [files]
+
+    saved_filenames = {}
+    # baseDir is defined in settings.MEDIA_ROOT (usually 'uploads')
+    target_folder = os.path.join(settings.MEDIA_ROOT, subfolder)
+    
+    # Ensure directory exists (Node's ensureDir)
+    os.makedirs(target_folder, exist_ok=True)
+
+    for file in files_to_process:
+        # 2. Generate filename: {timestamp}_{name}{ext}
+        ext = os.path.splitext(file.name)[1].lower()
+        name = os.path.splitext(file.name)[0].replace(" ", "_")
+        filename = f"{int(time.time() * 1000)}_{name}{ext}"
+        
+        full_path = os.path.join(target_folder, filename)
+
+        try:
+            # 3. Write file (Node's fs.writeFileSync)
+            # Using default_storage handles the write stream for us
+            with default_storage.open(os.path.join(subfolder, filename), 'wb+') as destination:
+                for chunk in file.chunks():
+                    destination.write(chunk)
+            
+            # Use fieldname or a default key
+            field_name = getattr(file, 'field_name', 'file')
+            saved_filenames[field_name] = filename
+            
+        except Exception as e:
+            print(f"File write failed: {e}")
+            raise HttpError(500, f"Failed to upload file: {file.name}")
+
+    # 4. Handle Old File Deletion
+    if saved_filenames and old_file_name:
+        delete_file(subfolder, old_file_name)
+
+    return saved_filenames
+
 class ResponseBuilder:
     """Standardized response builder for API responses"""
     
@@ -116,11 +269,11 @@ class ResponseBuilder:
         return {
             'success': False,
             'code': status_code or 400,
-            'message': ResponseBuilder._parse_error_content(message),
+            'message': ResponseBuilder.parseErrorContent(message),
         }
     
     @staticmethod
-    def _parse_error_content(message: str) -> str:
+    def parseErrorContent(message: str) -> str:
         message_str = str(message)
 
         if "(1062," in message_str and "Duplicate entry" in message_str:
@@ -177,7 +330,7 @@ class ResponseBuilder:
             
         return message_str
 
-def normalize_phone_number(phone_number: str) -> str:
+def normalizePhoneNumber(phone_number: str) -> str:
         try:
             # Remove all non-digit characters
             cleaned = re.sub(r'\D', '', phone_number)
@@ -199,7 +352,7 @@ def normalize_phone_number(phone_number: str) -> str:
         except Exception as e:
             raise ValueError(f'Invalid phone number format: {str(e)}')
 
-def generate_otp(phone_number: str, validity_minutes: int = 5, otp_type: str = 'LOGIN'):
+def generateOtp(phone_number: str, validity_minutes: int = 5, otp_type: str = 'LOGIN'):
     """Generate OTP with rate limiting - block for 1 hour if 3 OTPs requested within last hour"""
     one_hour_ago = timezone.now() - timedelta(hours=1)
     
@@ -238,7 +391,7 @@ def generate_otp(phone_number: str, validity_minutes: int = 5, otp_type: str = '
         otp_type=otp_type
     )
 
-def generate_sequential_code(model, field_name='sales_code', prefix='SL'):
+def generateSequentialCode(model, field_name='sales_code', prefix='SL'):
     # Format: PREFIX-YYYYMMDD-N (Sequential number)
     date_str = datetime.datetime.now().strftime('%Y%m%d')
     prefix_full = f"{prefix}-{date_str}-"

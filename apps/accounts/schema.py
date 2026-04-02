@@ -20,7 +20,6 @@ class CompanyRegistrationSchema(Schema):
 
     # Company Info (matching Company model)
     company_name: str
-    legal_name: Optional[str] = None
     business_type_id: Optional[int] = 0
     phone_number: str
     tax_no: Optional[str] = None

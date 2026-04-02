@@ -6,8 +6,8 @@ from .models import Company, Branch
 
 @admin.register(Company)
 class CompanyAdmin(admin.ModelAdmin):
-    list_display = ['id','company_code', 'company_name', 'phone_number', 'email', 'owner', 'default_company', 'status', 'created_at']
-    list_filter = ['default_company', 'status', 'created_at']
+    list_display = ['id','company_code', 'company_name', 'phone_number', 'email', 'owner', 'status', 'created_at']
+    list_filter = ['status', 'created_at']
     search_fields = ['company_code', 'company_name', 'phone_number', 'email', 'pan_no']
     ordering = ['-created_at']
     readonly_fields = ['id', 'created_at', 'updated_at']
@@ -47,9 +47,9 @@ class CompanyAdmin(admin.ModelAdmin):
         # Superusers can delete everything
         if request.user.is_superuser:
             return True
-        # Company owners can only delete their own companies (but not their primary company)
+        # Company owners can only delete their own companies
         if request.user.is_staff and request.user.companies.exists() and obj:
-            return obj.id in [company.id for company in request.user.companies.all()] and obj.id != request.user.primary_company.id
+            return obj.id in [company.id for company in request.user.companies.all()]
         return super().has_delete_permission(request, obj)
 
     def save_model(self, request, obj, form, change):
@@ -66,7 +66,7 @@ class CompanyAdmin(admin.ModelAdmin):
         ('Contact Info', {'fields': ('phone_number', 'email')}),
         ('Tax Info', {'fields': ('pan_no',)}),
         ('Address Info', {'fields': ('address', 'pincode', 'country', 'state', 'city')}),
-        ('Settings', {'fields': ('default_company', 'status', 'logo_image')}),
+        ('Settings', {'fields': ('status', 'logo_image')}),
         ('Timestamps', {'fields': ('created_at', 'updated_at')}),
     )
 

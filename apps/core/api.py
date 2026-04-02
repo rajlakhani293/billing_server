@@ -1,4 +1,6 @@
 from ninja import Router
+
+from apps.core.tenantQuery import TenantQuery
 from .models import CountryMaster, StateMaster, CityMaster
 from .schema import (
     CountryMasterListResponseSchema,
@@ -15,15 +17,13 @@ location_router = Router(tags=['Location'])
 def get_countries(request):
     """Get all countries"""
     try:
-        countries = CountryMaster.objects.all().values('id', 'name', 'country_code')
-        countries_data = [
-            {
-                'id': country['id'],
-                'name': country['name'],
-                'country_code': country['country_code']
-            }
-            for country in countries
-        ]
+        countries_data = TenantQuery.findAllRecords(
+            CountryMaster,
+            {},
+            options={"attributes": ["id", "name", "country_code"]},
+            request=None,
+            tenant_config=False
+        )
         return 200, ResponseBuilder.success('Countries retrieved successfully', countries_data)
     except Exception as e:
         return 400, ResponseBuilder.error(f'Failed to get countries: {str(e)}')
@@ -33,15 +33,13 @@ def get_countries(request):
 def get_states(request, country_id: str):
     """Get all states for a country"""
     try:
-        states = StateMaster.objects.filter(country_id=country_id).values('id', 'name', 'country_id')
-        states_data = [
-            {
-                'id': state['id'],
-                'name': state['name'],
-                'country_id': state['country_id']
-            }
-            for state in states
-        ]
+        states_data = TenantQuery.findAllRecords(
+            StateMaster,
+            {"country_id": country_id},
+            options={"attributes": ["id", "name", "country_id"]},
+            request=None,
+            tenant_config=False
+        )
         return 200, ResponseBuilder.success('States retrieved successfully', states_data)
     except Exception as e:
         return 400, ResponseBuilder.error(f'Failed to get states: {str(e)}')
@@ -51,15 +49,13 @@ def get_states(request, country_id: str):
 def get_cities(request, state_id: str):
     """Get all cities for a state"""
     try:
-        cities = CityMaster.objects.filter(state_id=state_id).values('id', 'name', 'state_id')
-        cities_data = [
-            {
-                'id': city['id'],
-                'name': city['name'],
-                'state_id': city['state_id']
-            }
-            for city in cities
-        ]
+        cities_data = TenantQuery.findAllRecords(
+            CityMaster,
+            {"state_id": state_id},
+            options={"attributes": ["id", "name", "state_id"]},
+            request=None,
+            tenant_config=False
+        )
         return 200, ResponseBuilder.success('Cities retrieved successfully', cities_data)
     except Exception as e:
         return 400, ResponseBuilder.error(f'Failed to get cities: {str(e)}')

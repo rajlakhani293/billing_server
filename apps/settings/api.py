@@ -12,7 +12,7 @@ setting_router = Router(tags=['Setting'], auth=AuthBearer())
 # Session Data
 @setting_router.get('/session-data')
 def session_data(request):
-    return AuthService.get_session_data(request)
+    return AuthService.getSessionData(request)
 
 
 # ================================================================= ================================================================= =================================================================

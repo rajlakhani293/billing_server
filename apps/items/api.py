@@ -3,7 +3,7 @@ from apps.core.auth import AuthBearer
 from .service import ItemService, ItemCategoryService, ItemUnitService, InventoryService
 from apps.core.schema import DeleteSchema
 from .schema import ItemCategoryCreateSchema, ItemCategoryUpdateSchema, ItemUnitUpdateSchema, ItemUnitCreateSchema, ItemIn, ItemUpdateSchema, StockAdjustmentIn
-from apps.core.helpers import parse_multipart_request
+from apps.core.helpers import parseMultipartRequest
 
 items_router = Router(tags=['Items'], auth=AuthBearer())
 
@@ -33,7 +33,7 @@ def getItemById(request, item_id: int):
 
 @items_router.put("/{item_id}")
 def update_item(request, item_id: int, payload: ItemUpdateSchema = Form(...)):
-    request = parse_multipart_request(request)
+    request = parseMultipartRequest(request)
     return ItemService.update(request, item_id, payload.dict())
 
 # ================================================================= ================================================================= =================================================================
@@ -114,4 +114,14 @@ def adjustStock(request, payload: StockAdjustmentIn):
 
 @items_router.post('/stock/get-transactions')
 def getStockTransactions(request, payload: dict = None):
+    # Handle JSON parsing if payload is None
+    if payload is None and hasattr(request, 'body'):
+        import json
+        try:
+            payload = json.loads(request.body.decode('utf-8'))
+        except (json.JSONDecodeError, UnicodeDecodeError, AttributeError):
+            payload = {}
+    elif payload is None:
+        payload = {}
+    
     return InventoryService.getStockTransactions(payload, request)
