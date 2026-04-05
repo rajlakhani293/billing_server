@@ -9,6 +9,7 @@ from apps.core.tenantQuery import TenantQuery
 from apps.items.service import InventoryService
 from apps.items.models import Item
 from apps.settings.models import Party
+import datetime
 
 class SalesService:
 
@@ -20,20 +21,24 @@ class SalesService:
         if not party:
             return None
 
-        new_balance = (party.current_balance or Decimal("0.00")) + Decimal(str(amount))
-        party.current_balance = new_balance
+        stored_amount = Decimal(str(party.current_balance or "0.00"))
+        balance_type = party.balance_type or 1
+        signed_balance = stored_amount if balance_type == 1 else -stored_amount
 
-        if new_balance > 0:
+        signed_delta = Decimal(str(amount))
+        new_signed = signed_balance + signed_delta
+
+        if new_signed > 0:
             party.balance_type = 1
-            party.wallet_balance = new_balance
-        elif new_balance < 0:
+            party.current_balance = new_signed
+        elif new_signed < 0:
             party.balance_type = 2
-            party.wallet_balance = abs(new_balance)
+            party.current_balance = abs(new_signed)
         else:
             party.balance_type = None
-            party.wallet_balance = Decimal("0.00")
+            party.current_balance = Decimal("0.00")
 
-        party.save(update_fields=["current_balance", "balance_type", "wallet_balance", "updated_at"])
+        party.save(update_fields=["current_balance", "balance_type", "updated_at"])
 
         entry_date = timezone.localdate()
         TenantQuery.createRecord(
@@ -41,7 +46,7 @@ class SalesService:
             {
                 "party_id": party.id,
                 "sales_id": sales_id,
-                "amount": amount,
+                "amount": abs(Decimal(str(amount))),
                 "date": entry_date,
                 "month": entry_date.month,
                 "year": entry_date.year,
@@ -49,12 +54,11 @@ class SalesService:
             },
             request,
         )
-        return new_balance
+        return new_signed
     
     @staticmethod
     def create(request, payload: dict):
         try:
-            # Validate business logic: party_id and paid_amount are required for Partial payment mode
             if payload.get('payment_mode') == 3:
                 if not payload.get('party_id'):
                     return ResponseBuilder.error(
@@ -94,7 +98,9 @@ class SalesService:
                 # Create Sales Transactions
                 for trans_data in transactions_data:
                     trans_data['sales_id'] = sales['id']
+                    
                     TenantQuery.createRecord(SalesTransaction, trans_data, request)
+
                     InventoryService.applyStockMovement(
                         request,
                         item_id=trans_data['item_id'],
@@ -112,7 +118,7 @@ class SalesService:
                         SalesService.createLedgerEntry(
                             request,
                             party_id=party_id,
-                            amount=due_amount,
+                            amount=-due_amount,
                             sales_id=sales["id"],
                             note=f"Sales invoice {sales['sales_code']}",
                         )
@@ -317,7 +323,7 @@ class SalesService:
                         SalesService.createLedgerEntry(
                             request,
                             party_id=sales.party_id,
-                            amount=added_total,
+                            amount=-added_total,
                             sales_id=sales.id,
                             note=f"Sales update {sales.sales_code}",
                         )
@@ -331,7 +337,7 @@ class SalesService:
                         SalesService.createLedgerEntry(
                             request,
                             party_id=sales.party_id,
-                            amount=-total_return_amount,
+                            amount=total_return_amount,
                             sales_id=sales.id,
                             note=f"Sales return for {sales.sales_code}",
                         )
@@ -468,10 +474,9 @@ class SalesService:
                     dt = row.get("sales_date")
                     if dt is None:
                         continue
-                    if timezone.is_aware(dt):
-                        dt = timezone.localtime(dt)
-                    key = dt.strftime("%Y-%m-%d %H:00")
-                    label = dt.strftime("%I %p")
+                    dt_datetime = datetime.datetime.combine(dt, datetime.time.min)
+                    key = dt_datetime.strftime("%Y-%m-%d %H:00")
+                    label = dt_datetime.strftime("%I %p")
 
                 buckets.setdefault(key, {"label": label, "total": Decimal("0.00"), "count": 0})
                 buckets[key]["total"] += row.get("total_amount") or Decimal("0.00")

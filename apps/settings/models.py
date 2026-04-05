@@ -90,7 +90,6 @@ class Party(IntegerModel, TimestampedModel):
     state = models.ForeignKey(StateMaster, on_delete=models.SET_NULL, null=True, blank=True)
     country = models.ForeignKey(CountryMaster, on_delete=models.SET_NULL, null=True, blank=True)
     pincode = models.CharField(max_length=10, blank=True, null=True)
-    wallet_balance = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, help_text='Pending or advance amount (absolute)')
     current_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text='Current outstanding balance')
     balance_type = models.IntegerField(choices=BALANCE_TYPE_CHOICES, null=True, blank=True, help_text='1: Debit (Receivable), 2: Credit (Payable/Advance)')
     customer_category = models.IntegerField(choices=CUSTOMER_CATEGORY_CHOICES, null=True, blank=True, help_text='1: Regular, 2: Card Holder, 3: Vara (Home Delivery)')

@@ -201,7 +201,7 @@ class PartyService:
     @staticmethod
     def getPartyCreditDays(party_id, data, request):
         try:
-            result = TenantQuery.findAllRecords(
+            records = TenantQuery.findAllRecords(
                 CustomerLedger,
                 {
                     "month": data["month"],
@@ -214,10 +214,33 @@ class PartyService:
                         "amount",
                         "note",
                         "sales__sales_code",
-                    ]
+                    ],
+                    "order": ["date"]
                 },
                 request,
             )
+
+            # Group records by date
+            grouped_data = {}
+            for record in records:
+                date_str = record.get("date")
+                if date_str not in grouped_data:
+                    grouped_data[date_str] = {
+                        "date": date_str,
+                        "total_amount": Decimal("0.00"),
+                        "transactions": []
+                    }
+                
+                grouped_data[date_str]["total_amount"] += Decimal(str(record.get("amount", "0.00")))
+                grouped_data[date_str]["transactions"].append({
+                    "amount": record.get("amount"),
+                    "note": record.get("note"),
+                    "sales_code": record.get("sales__sales_code")
+                })
+
+            # Convert to sorted list
+            result = list(grouped_data.values())
+            result.sort(key=lambda x: x["date"])
 
             return ResponseBuilder.success(
                 message="Party credit day data retrieved successfully",

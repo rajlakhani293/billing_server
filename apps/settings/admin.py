@@ -183,7 +183,7 @@ class PartyAdmin(ModelAdmin):
     list_filter = ['party_type', 'status', 'company', 'branch']
     search_fields = ['name', 'phone_number', 'email']
     list_editable = ['status']
-    readonly_fields = ['created_at', 'updated_at', 'wallet_balance']
+    readonly_fields = ['created_at', 'updated_at']
     
     fieldsets = (
         ('Basic Information', {
@@ -193,7 +193,7 @@ class PartyAdmin(ModelAdmin):
             'fields': ('address', 'city', 'state', 'country', 'pincode')
         }),
         ('Financial Info', {
-            'fields': ('wallet_balance', 'balance_type', 'customer_category')
+            'fields': ('balance_type', 'customer_category')
         }),
         ('Status', {
             'fields': ('status',)
