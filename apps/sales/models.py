@@ -143,3 +143,55 @@ class CustomerLedger(IntegerModel, TimestampedModel):
 
     def __str__(self):
         return f"{self.party.name} - {self.amount}"
+
+
+class MonthlyStatement(IntegerModel, TimestampedModel):
+    party = models.ForeignKey(Party, on_delete=models.CASCADE, related_name="monthly_statements", help_text="Customer")
+    month = models.PositiveSmallIntegerField(help_text="Statement month (1-12)")
+    year = models.PositiveSmallIntegerField(help_text="Statement year (YYYY)")
+    opening_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    month_due_total = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    month_paid_total = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    closing_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    status = models.IntegerField(default=0, help_text="0: Active, 1: Inactive, 2: Deleted")
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="monthly_statements")
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name="monthly_statements", null=True, blank=True)
+
+    class Meta:
+        db_table = "monthly_statements"
+        verbose_name = "Monthly Statement"
+        verbose_name_plural = "Monthly Statements"
+        ordering = ["-year", "-month", "-created_at"]
+        indexes = [
+            models.Index(fields=["company", "branch", "party", "year", "month"]),
+            models.Index(fields=["status"]),
+        ]
+        unique_together = [
+            ["company", "branch", "party", "year", "month"]
+        ]
+
+    def __str__(self):
+        return f"{self.party.name} - {self.month}/{self.year}"
+
+
+class PaymentHistory(IntegerModel, TimestampedModel):
+    party = models.ForeignKey(Party, on_delete=models.CASCADE, related_name="payment_history", help_text="Customer")
+    amount = models.DecimalField(max_digits=12, decimal_places=2, help_text="Payment amount")
+    date = models.DateField(blank=True, null=True, help_text="Payment date")
+    note = models.TextField(blank=True, null=True)
+    status = models.IntegerField(default=0, help_text="0: Active, 1: Inactive, 2: Deleted")
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="payment_history")
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name="payment_history", null=True, blank=True)
+
+    class Meta:
+        db_table = "payment_history"
+        verbose_name = "Payment History"
+        verbose_name_plural = "Payment History"
+        ordering = ["-date", "-created_at"]
+        indexes = [
+            models.Index(fields=["company", "branch", "party", "date"]),
+            models.Index(fields=["status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.party.name} - {self.amount}"

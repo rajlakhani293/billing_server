@@ -1,11 +1,14 @@
 from django.db import transaction
+from django.utils import timezone
 import json
 import math
+import datetime
 from decimal import Decimal
 from apps.core.helpers import ResponseBuilder
 from .models import Brand, Tax, Party
 from apps.core.tenantQuery import TenantQuery
-from apps.sales.models import CustomerLedger
+from apps.sales.models import CustomerLedger, MonthlyStatement, PaymentHistory
+from apps.sales.service import SalesService
 
 
 class BrandService:
@@ -201,12 +204,57 @@ class PartyService:
     @staticmethod
     def getPartyCreditDays(party_id, data, request):
         try:
+            base_month = int(data["month"])
+            base_year = int(data["year"])
+
+            def shift_month(year, month, delta):
+                total = (year * 12 + (month - 1)) + delta
+                new_year = total // 12
+                new_month = total % 12 + 1
+                return new_year, new_month
+
+            year, month = base_year, base_month
+            first_day = datetime.date(year, month, 1)
+            next_month_year, next_month = shift_month(year, month, 1)
+            next_month_first = datetime.date(next_month_year, next_month, 1)
+            last_day = next_month_first - datetime.timedelta(days=1)
+            prev_month_end = first_day - datetime.timedelta(days=1)
+
+            statement = TenantQuery.findOneRecord(
+                MonthlyStatement,
+                {"party_id": party_id, "month": month, "year": year},
+                {},
+                request,
+            )
+
+            opening_balance = None
+            month_due_total = None
+            month_paid_total = None
+            closing_balance = None
+
+            if statement:
+                opening_balance = Decimal(str(statement.get("opening_balance", "0.00")))
+                month_due_total = Decimal(str(statement.get("month_due_total", "0.00")))
+                month_paid_total = Decimal(str(statement.get("month_paid_total", "0.00")))
+                closing_balance = Decimal(str(statement.get("closing_balance", "0.00")))
+            else:
+                opening_balance = Decimal(
+                    str(
+                        TenantQuery.sumRecords(
+                            CustomerLedger,
+                            "amount",
+                            {"party": party_id, "date__lt": first_day},
+                            request,
+                        )
+                    )
+                )
+
             records = TenantQuery.findAllRecords(
                 CustomerLedger,
                 {
-                    "month": data["month"],
-                    "year": data["year"],
                     "party": party_id,
+                    "date__gte": first_day,
+                    "date__lte": last_day,
                 },
                 {
                     "attributes": [
@@ -220,8 +268,13 @@ class PartyService:
                 request,
             )
 
-            # Group records by date
             grouped_data = {}
+            if month_due_total is None:
+                month_due_total = Decimal("0.00")
+            if month_paid_total is None:
+                month_paid_total = Decimal("0.00")
+            month_net = Decimal("0.00")
+
             for record in records:
                 date_str = record.get("date")
                 if date_str not in grouped_data:
@@ -230,21 +283,60 @@ class PartyService:
                         "total_amount": Decimal("0.00"),
                         "transactions": []
                     }
-                
-                grouped_data[date_str]["total_amount"] += Decimal(str(record.get("amount", "0.00")))
+
+                amount_val = Decimal(str(record.get("amount", "0.00")))
+                grouped_data[date_str]["total_amount"] += amount_val
                 grouped_data[date_str]["transactions"].append({
                     "amount": record.get("amount"),
                     "note": record.get("note"),
                     "sales_code": record.get("sales__sales_code")
                 })
 
-            # Convert to sorted list
-            result = list(grouped_data.values())
-            result.sort(key=lambda x: x["date"])
+                month_net += amount_val
+                if statement is None:
+                    if amount_val >= 0:
+                        month_due_total += amount_val
+                    else:
+                        month_paid_total += abs(amount_val)
+
+            days = list(grouped_data.values())
+            days.sort(key=lambda x: x["date"])
+
+            if closing_balance is None:
+                closing_balance = opening_balance + month_net
+
+            payments = TenantQuery.findAllRecords(
+                PaymentHistory,
+                {
+                    "party": party_id,
+                    "date__gte": first_day,
+                    "date__lte": last_day,
+                },
+                {
+                    "attributes": [
+                        "id",
+                        "date",
+                        "amount",
+                        "note",
+                    ],
+                    "order": ["date"]
+                },
+                request,
+            )
+
+            month_block = {
+                "month": f"{year}-{str(month).zfill(2)}",
+                "opening_balance": opening_balance,
+                "month_due_total": month_due_total,
+                "month_paid_total": month_paid_total,
+                "month_net": month_net,
+                "closing_balance": closing_balance,
+                "days": days,
+            }
 
             return ResponseBuilder.success(
-                message="Party credit day data retrieved successfully",
-                data=result,
+                message="Party credit month data retrieved successfully",
+                data={"month": month_block, "payments": payments},
             )
         except Exception as e:
             return ResponseBuilder.error(message=str(e), status_code=400)
@@ -348,5 +440,43 @@ class PartyService:
             return ResponseBuilder.success(
                 data=result, message="Party due list retrieved successfully"
             )
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+
+    @staticmethod
+    def addPayment(data, request):
+        try:
+            with transaction.atomic():
+                party_id = data.get("party_id")
+                amount = Decimal(str(data.get("amount") or "0.00"))
+                if amount <= 0:
+                    return ResponseBuilder.error(
+                        message="Payment amount must be greater than zero",
+                        status_code=400,
+                    )
+
+                note = (data.get("note") or "").strip() or "Payment received"
+                payment_date = data.get("payment_date") or timezone.localdate()
+
+                TenantQuery.createRecord(
+                    PaymentHistory,
+                    {
+                        "party_id": party_id,
+                        "amount": amount,
+                        "date": payment_date,
+                        "note": note,
+                    },
+                    request,
+                )
+
+                SalesService.createLedgerEntry(
+                    request,
+                    party_id=party_id,
+                    amount=-amount,
+                    note=note,
+                    entry_date=payment_date,
+                )
+
+                return ResponseBuilder.success(message="Payment recorded successfully")
         except Exception as e:
             return ResponseBuilder.error(message=str(e), status_code=400)

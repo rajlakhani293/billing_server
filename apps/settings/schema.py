@@ -1,4 +1,5 @@
 from typing import Optional
+from datetime import date
 from ninja import Schema, ModelSchema
 from pydantic import Field, validator
 from decimal import Decimal
@@ -64,3 +65,10 @@ class PartyOut(ModelSchema):
     class Meta:
         model = Party
         fields = '__all__'
+
+
+class PartyPaymentSchema(Schema):
+    party_id: int
+    amount: Decimal = Field(..., gt=0)
+    note: Optional[str] = None
+    payment_date: Optional[date] = None

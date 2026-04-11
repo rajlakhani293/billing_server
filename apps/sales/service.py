@@ -4,7 +4,7 @@ from datetime import timedelta
 import json
 from decimal import Decimal
 from apps.core.helpers import ResponseBuilder, generateSequentialCode
-from .models import Sales, SalesTransaction, CustomerLedger
+from .models import Sales, SalesTransaction, CustomerLedger, MonthlyStatement
 from apps.core.tenantQuery import TenantQuery
 from apps.items.service import InventoryService
 from apps.items.models import Item
@@ -12,14 +12,71 @@ from apps.settings.models import Party
 import datetime
 
 class SalesService:
+    OPENING_BALANCE_NOTE = "Opening Balance"
 
     @staticmethod
-    def createLedgerEntry(request, party_id, amount, sales_id=None, note=None):
+    def ensureMonthlyOpeningBalance(request, party, entry_date):
+        if not party or not entry_date:
+            return
+
+        # Only create once per month
+        existing = TenantQuery.findOneRecord(
+            CustomerLedger,
+            {
+                "party_id": party.id,
+                "month": entry_date.month,
+                "year": entry_date.year,
+                "note": SalesService.OPENING_BALANCE_NOTE,
+            },
+            {},
+            request,
+        )
+        if existing:
+            return
+
+        first_day = entry_date.replace(day=1)
+        prev_month_end = first_day - timedelta(days=1)
+        signed_balance = Decimal(
+            str(
+                TenantQuery.sumRecords(
+                    CustomerLedger,
+                    "amount",
+                    {"party_id": party.id, "date__lte": prev_month_end},
+                    request,
+                )
+            )
+        )
+
+        if signed_balance == 0:
+            return
+
+        TenantQuery.createRecord(
+            CustomerLedger,
+            {
+                "party_id": party.id,
+                "amount": signed_balance,
+                "date": first_day,
+                "month": first_day.month,
+                "year": first_day.year,
+                "note": SalesService.OPENING_BALANCE_NOTE,
+            },
+            request,
+        )
+
+    @staticmethod
+    def createLedgerEntry(request, party_id, amount, sales_id=None, note=None, entry_date=None, affect_balance=True):
         party = TenantQuery.findOneRecordForUpdate(
             Party, {"id": party_id}, request
         )
         if not party:
             return None
+
+        entry_date = entry_date or timezone.localdate()
+        # entry_date = datetime.date(2026, 3, 18)
+
+        # Ensure opening balance exists before first transaction in a month
+        if note != SalesService.OPENING_BALANCE_NOTE:
+            SalesService.ensureMonthlyOpeningBalance(request, party, entry_date)
 
         stored_amount = Decimal(str(party.current_balance or "0.00"))
         balance_type = party.balance_type or 1
@@ -38,15 +95,15 @@ class SalesService:
             party.balance_type = None
             party.current_balance = Decimal("0.00")
 
-        party.save(update_fields=["current_balance", "balance_type", "updated_at"])
+        if affect_balance:
+            party.save(update_fields=["current_balance", "balance_type", "updated_at"])
 
-        entry_date = timezone.localdate()
         TenantQuery.createRecord(
             CustomerLedger,
             {
                 "party_id": party.id,
                 "sales_id": sales_id,
-                "amount": abs(Decimal(str(amount))),
+                "amount": Decimal(str(amount)),
                 "date": entry_date,
                 "month": entry_date.month,
                 "year": entry_date.year,
@@ -54,7 +111,61 @@ class SalesService:
             },
             request,
         )
+
+        if note != SalesService.OPENING_BALANCE_NOTE:
+            SalesService.updateMonthlyStatement(request, party, entry_date, Decimal(str(amount)))
         return new_signed
+
+    @staticmethod
+    def updateMonthlyStatement(request, party, entry_date, amount):
+        if not party or not entry_date:
+            return
+
+        month = entry_date.month
+        year = entry_date.year
+        first_day = entry_date.replace(day=1)
+
+        statement = TenantQuery.findOneRecordForUpdate(
+            MonthlyStatement,
+            {"party_id": party.id, "month": month, "year": year},
+            request,
+        )
+
+        if not statement:
+            opening_balance = Decimal(
+                str(
+                    TenantQuery.sumRecords(
+                        CustomerLedger,
+                        "amount",
+                        {"party_id": party.id, "date__lt": first_day},
+                        request,
+                    )
+                )
+            )
+            statement = MonthlyStatement.objects.create(
+                party_id=party.id,
+                month=month,
+                year=year,
+                opening_balance=opening_balance,
+                month_due_total=Decimal("0.00"),
+                month_paid_total=Decimal("0.00"),
+                closing_balance=opening_balance,
+                company_id=party.company_id,
+                branch_id=party.branch_id,
+            )
+
+        if amount >= 0:
+            statement.month_due_total = (statement.month_due_total or Decimal("0.00")) + amount
+        else:
+            statement.month_paid_total = (statement.month_paid_total or Decimal("0.00")) + abs(amount)
+
+        statement.closing_balance = (
+            (statement.opening_balance or Decimal("0.00"))
+            + (statement.month_due_total or Decimal("0.00"))
+            - (statement.month_paid_total or Decimal("0.00"))
+        )
+
+        statement.save(update_fields=["month_due_total", "month_paid_total", "closing_balance", "updated_at"])
     
     @staticmethod
     def create(request, payload: dict):
@@ -75,6 +186,7 @@ class SalesService:
                 # Extract transactions data
                 transactions_data = payload.pop('transactions', [])
                 payload["sales_date"] = timezone.localdate()
+                # payload["sales_date"] = datetime.date(2026, 3, 18)
 
                 total_amount = Decimal(str(payload.get('total_amount', "0.00")))
                 paid_amount_raw = payload.get('paid_amount', "0.00")
@@ -118,7 +230,7 @@ class SalesService:
                         SalesService.createLedgerEntry(
                             request,
                             party_id=party_id,
-                            amount=-due_amount,
+                            amount=due_amount,
                             sales_id=sales["id"],
                             note=f"Sales invoice {sales['sales_code']}",
                         )
@@ -323,7 +435,7 @@ class SalesService:
                         SalesService.createLedgerEntry(
                             request,
                             party_id=sales.party_id,
-                            amount=-added_total,
+                            amount=added_total,
                             sales_id=sales.id,
                             note=f"Sales update {sales.sales_code}",
                         )
@@ -337,7 +449,7 @@ class SalesService:
                         SalesService.createLedgerEntry(
                             request,
                             party_id=sales.party_id,
-                            amount=total_return_amount,
+                            amount=-total_return_amount,
                             sales_id=sales.id,
                             note=f"Sales return for {sales.sales_code}",
                         )
