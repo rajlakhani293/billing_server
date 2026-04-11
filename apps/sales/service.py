@@ -1,4 +1,4 @@
-from django.db import transaction
+from django.db import transaction, models
 from django.utils import timezone
 from datetime import timedelta
 import json
@@ -13,6 +13,19 @@ import datetime
 
 class SalesService:
     OPENING_BALANCE_NOTE = "Opening Balance"
+
+    @staticmethod
+    def _getOpeningBalanceBeforeDate(party_id, cutoff_date):
+        if not party_id or not cutoff_date:
+            return Decimal("0.00")
+        return Decimal(
+            str(
+                CustomerLedger.objects.filter(
+                    party_id=party_id,
+                    date__lt=cutoff_date,
+                ).aggregate(total=models.Sum("amount")).get("total") or 0
+            )
+        )
 
     @staticmethod
     def ensureMonthlyOpeningBalance(request, party, entry_date):
@@ -35,17 +48,7 @@ class SalesService:
             return
 
         first_day = entry_date.replace(day=1)
-        prev_month_end = first_day - timedelta(days=1)
-        signed_balance = Decimal(
-            str(
-                TenantQuery.sumRecords(
-                    CustomerLedger,
-                    "amount",
-                    {"party_id": party.id, "date__lte": prev_month_end},
-                    request,
-                )
-            )
-        )
+        signed_balance = SalesService._getOpeningBalanceBeforeDate(party.id, first_day)
 
         if signed_balance == 0:
             return
@@ -61,6 +64,35 @@ class SalesService:
                 "note": SalesService.OPENING_BALANCE_NOTE,
             },
             request,
+        )
+
+    @staticmethod
+    def ensureMonthlyOpeningBalanceForDate(party, first_day):
+        if not party or not first_day:
+            return
+
+        exists = CustomerLedger.objects.filter(
+            party_id=party.id,
+            month=first_day.month,
+            year=first_day.year,
+            note=SalesService.OPENING_BALANCE_NOTE,
+        ).exists()
+        if exists:
+            return
+
+        signed_balance = SalesService._getOpeningBalanceBeforeDate(party.id, first_day)
+        if signed_balance == 0:
+            return
+
+        CustomerLedger.objects.create(
+            party_id=party.id,
+            amount=signed_balance,
+            date=first_day,
+            month=first_day.month,
+            year=first_day.year,
+            note=SalesService.OPENING_BALANCE_NOTE,
+            company_id=party.company_id,
+            branch_id=party.branch_id,
         )
 
     @staticmethod
@@ -132,16 +164,7 @@ class SalesService:
         )
 
         if not statement:
-            opening_balance = Decimal(
-                str(
-                    TenantQuery.sumRecords(
-                        CustomerLedger,
-                        "amount",
-                        {"party_id": party.id, "date__lt": first_day},
-                        request,
-                    )
-                )
-            )
+            opening_balance = SalesService._getOpeningBalanceBeforeDate(party.id, first_day)
             statement = MonthlyStatement.objects.create(
                 party_id=party.id,
                 month=month,
@@ -166,6 +189,58 @@ class SalesService:
         )
 
         statement.save(update_fields=["month_due_total", "month_paid_total", "closing_balance", "updated_at"])
+
+    @staticmethod
+    def generateMonthlyStatementForParty(party, year, month, allow_zero=False):
+        if not party:
+            return None
+
+        first_day = datetime.date(year, month, 1)
+        next_month_year = year + (1 if month == 12 else 0)
+        next_month = 1 if month == 12 else month + 1
+        next_month_first = datetime.date(next_month_year, next_month, 1)
+
+        statement = MonthlyStatement.objects.filter(
+            party_id=party.id,
+            year=year,
+            month=month,
+        ).first()
+
+        if statement:
+            return statement
+
+        opening_balance = SalesService._getOpeningBalanceBeforeDate(party.id, first_day)
+
+        if opening_balance == 0 and not allow_zero:
+            return None
+
+        # Ensure opening balance entry exists in ledger for the month when needed
+        if opening_balance != 0:
+            SalesService.ensureMonthlyOpeningBalanceForDate(party, first_day)
+
+        month_entries = CustomerLedger.objects.filter(
+            party_id=party.id,
+            date__gte=first_day,
+            date__lt=next_month_first,
+        ).exclude(note=SalesService.OPENING_BALANCE_NOTE)
+
+        month_due_total = Decimal(str(month_entries.filter(amount__gte=0).aggregate(total=models.Sum("amount")).get("total") or 0))
+        month_paid_total = Decimal(str(month_entries.filter(amount__lt=0).aggregate(total=models.Sum("amount")).get("total") or 0))
+        month_paid_total = abs(month_paid_total)
+
+        closing_balance = opening_balance + month_due_total - month_paid_total
+
+        return MonthlyStatement.objects.create(
+            party_id=party.id,
+            month=month,
+            year=year,
+            opening_balance=opening_balance,
+            month_due_total=month_due_total,
+            month_paid_total=month_paid_total,
+            closing_balance=closing_balance,
+            company_id=party.company_id,
+            branch_id=party.branch_id,
+        )
     
     @staticmethod
     def create(request, payload: dict):

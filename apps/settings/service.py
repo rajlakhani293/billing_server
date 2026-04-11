@@ -444,6 +444,37 @@ class PartyService:
             return ResponseBuilder.error(message=str(e), status_code=400)
 
     @staticmethod
+    def getPaymentHistory(data, request):
+        try:
+            fieldConfig = [
+                ["party__name", True, True],
+                ["amount", True, True],
+                ["date", True, True],
+                ["note", True, False],
+            ]
+
+            options = {
+                "attributes": [
+                    "id",
+                    "party_id",
+                    "party__name",
+                    "amount",
+                    "date",
+                    "note",
+                ],
+            }
+
+            result = TenantQuery.fetchPaginatedData(
+                PaymentHistory, data, fieldConfig, options, request, date_field="date"
+            )
+
+            return ResponseBuilder.success(
+                data=result, message="Payment history retrieved successfully"
+            )
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+
+    @staticmethod
     def addPayment(data, request):
         try:
             with transaction.atomic():

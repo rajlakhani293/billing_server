@@ -124,6 +124,11 @@ def getById(request, party_id: int):
 def getPartyDueList(request, payload: dict = None):
     return PartyService.getPartyDueList(payload, request)
 
+# Payment History
+@setting_router.post('/payments/get-transactions')
+def getPaymentHistory(request, payload: dict = None):
+    return PartyService.getPaymentHistory(payload, request)
+
 # Party Payment (Ledger)
 @setting_router.post('/party-payment')
 def addPartyPayment(request, payload: PartyPaymentSchema):
