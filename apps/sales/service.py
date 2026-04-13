@@ -104,7 +104,7 @@ class SalesService:
             return None
 
         entry_date = entry_date or timezone.localdate()
-        # entry_date = datetime.date(2026, 3, 18)
+        # entry_date = datetime.date(2026, 3, 24)
 
         # Ensure opening balance exists before first transaction in a month
         if note != SalesService.OPENING_BALANCE_NOTE:
@@ -261,7 +261,7 @@ class SalesService:
                 # Extract transactions data
                 transactions_data = payload.pop('transactions', [])
                 payload["sales_date"] = timezone.localdate()
-                # payload["sales_date"] = datetime.date(2026, 3, 18)
+                # payload["sales_date"] = datetime.date(2026, 3, 24)
 
                 total_amount = Decimal(str(payload.get('total_amount', "0.00")))
                 paid_amount_raw = payload.get('paid_amount', "0.00")

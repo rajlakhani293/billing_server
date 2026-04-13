@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
+    'django_crontab',
 
     'apps.accounts',
     'apps.company',
@@ -220,3 +221,8 @@ CORS_ALLOW_HEADERS = [
 
 # For development, you can also use:
 # CORS_ALLOW_ALL_ORIGINS = True
+
+# Cron Jobs Configuration
+CRONJOBS = [
+    ('0 0 1 * *', 'django.core.management.call_command', ['generate_monthly_statements', '--all'], {}, 'generate_monthly_statements'),
+]
