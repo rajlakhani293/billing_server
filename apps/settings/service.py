@@ -500,42 +500,17 @@ class PartyService:
                     request,
                 )
 
-                # Apply payment to previous month first (if due exists), remainder to current month
-                first_day_current = payment_date.replace(day=1)
-                prev_month_end = first_day_current - datetime.timedelta(days=1)
-
-                prev_closing = Decimal(
-                    str(
-                        TenantQuery.sumRecords(
-                            CustomerLedger,
-                            "amount",
-                            {"party_id": party_id, "date__lte": prev_month_end},
-                            request,
-                        )
-                    )
+                # Apply payment in current month only
+                # Opening balance from previous month carries forward naturally
+                # Payment reduces current month total; remaining carries to next month as opening balance
+                # Extra payment reduces next month's opening balance
+                SalesService.createLedgerEntry(
+                    request,
+                    party_id=party_id,
+                    amount=-amount,
+                    note=note,
+                    entry_date=payment_date,
                 )
-                prev_due = prev_closing if prev_closing > 0 else Decimal("0.00")
-
-                apply_prev = min(amount, prev_due)
-                remaining = amount - apply_prev
-
-                if apply_prev > 0:
-                    SalesService.createLedgerEntry(
-                        request,
-                        party_id=party_id,
-                        amount=-apply_prev,
-                        note="Payment adjusted for previous month",
-                        entry_date=prev_month_end,
-                    )
-
-                if remaining > 0:
-                    SalesService.createLedgerEntry(
-                        request,
-                        party_id=party_id,
-                        amount=-remaining,
-                        note=note,
-                        entry_date=payment_date,
-                    )
 
                 return ResponseBuilder.success(message="Payment recorded successfully")
         except Exception as e:

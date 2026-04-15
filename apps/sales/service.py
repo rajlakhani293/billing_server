@@ -15,7 +15,7 @@ class SalesService:
     OPENING_BALANCE_NOTE = "Opening Balance"
 
     @staticmethod
-    def _getOpeningBalanceBeforeDate(party_id, cutoff_date):
+    def getOpeningBalanceBeforeDate(party_id, cutoff_date):
         if not party_id or not cutoff_date:
             return Decimal("0.00")
         return Decimal(
@@ -23,7 +23,7 @@ class SalesService:
                 CustomerLedger.objects.filter(
                     party_id=party_id,
                     date__lt=cutoff_date,
-                ).aggregate(total=models.Sum("amount")).get("total") or 0
+                ).exclude(note=SalesService.OPENING_BALANCE_NOTE).aggregate(total=models.Sum("amount")).get("total") or 0
             )
         )
 
@@ -48,7 +48,7 @@ class SalesService:
             return
 
         first_day = entry_date.replace(day=1)
-        signed_balance = SalesService._getOpeningBalanceBeforeDate(party.id, first_day)
+        signed_balance = SalesService.getOpeningBalanceBeforeDate(party.id, first_day)
 
         if signed_balance == 0:
             return
@@ -80,7 +80,7 @@ class SalesService:
         if exists:
             return
 
-        signed_balance = SalesService._getOpeningBalanceBeforeDate(party.id, first_day)
+        signed_balance = SalesService.getOpeningBalanceBeforeDate(party.id, first_day)
         if signed_balance == 0:
             return
 
@@ -103,8 +103,8 @@ class SalesService:
         if not party:
             return None
 
-        entry_date = entry_date or timezone.localdate()
-        # entry_date = datetime.date(2026, 3, 24)
+        # entry_date = entry_date or timezone.localdate()
+        entry_date = datetime.date(2026, 6, 10)
 
         # Ensure opening balance exists before first transaction in a month
         if note != SalesService.OPENING_BALANCE_NOTE:
@@ -164,7 +164,7 @@ class SalesService:
         )
 
         if not statement:
-            opening_balance = SalesService._getOpeningBalanceBeforeDate(party.id, first_day)
+            opening_balance = SalesService.getOpeningBalanceBeforeDate(party.id, first_day)
             statement = MonthlyStatement.objects.create(
                 party_id=party.id,
                 month=month,
@@ -209,7 +209,7 @@ class SalesService:
         if statement:
             return statement
 
-        opening_balance = SalesService._getOpeningBalanceBeforeDate(party.id, first_day)
+        opening_balance = SalesService.getOpeningBalanceBeforeDate(party.id, first_day)
 
         if opening_balance == 0 and not allow_zero:
             return None
@@ -260,8 +260,8 @@ class SalesService:
             with transaction.atomic():
                 # Extract transactions data
                 transactions_data = payload.pop('transactions', [])
-                payload["sales_date"] = timezone.localdate()
-                # payload["sales_date"] = datetime.date(2026, 3, 24)
+                # payload["sales_date"] = timezone.localdate()
+                payload["sales_date"] = datetime.date(2026, 6, 10)
 
                 total_amount = Decimal(str(payload.get('total_amount', "0.00")))
                 paid_amount_raw = payload.get('paid_amount', "0.00")
