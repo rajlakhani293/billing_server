@@ -1,10 +1,13 @@
 
 from ninja.router import Router
+from ninja import Form
 from apps.accounts.auth_service import AuthService
 from apps.core.auth import AuthBearer
 from apps.core.schema import DeleteSchema, PartyCreditDaysSchema
 from .schema import BrandCreateSchema, BrandUpdateSchema, TaxCreateSchema, TaxUpdateSchema, PartyCreateSchema, PartyUpdateSchema, PartyPaymentSchema
-from .service import BrandService, TaxService, PartyService
+from .service import BrandService, TaxService, PartyService, CompanyService, BranchService
+from apps.company.schema import CompanyUpdateSchema, BranchCreateSchema, BranchUpdateSchema
+from apps.core.helpers import parseMultipartRequest
 
 
 setting_router = Router(tags=['Setting'], auth=AuthBearer())
@@ -13,7 +16,6 @@ setting_router = Router(tags=['Setting'], auth=AuthBearer())
 @setting_router.get('/session-data')
 def session_data(request):
     return AuthService.getSessionData(request)
-
 
 # ================================================================= ================================================================= =================================================================
 # Brand CRUD APIs
@@ -138,3 +140,49 @@ def addPartyPayment(request, payload: PartyPaymentSchema):
 @setting_router.post('/party-credit-summary/{party_id}')
 def getPartyCreditDays(request, party_id: int, payload: PartyCreditDaysSchema):
     return PartyService.getPartyCreditDays(party_id, payload.dict(), request)
+
+
+# ================================================================= ================================================================= =================================================================
+# Company CRUD APIs
+# ================================================================= ================================================================= =================================================================
+
+@setting_router.put("/companies/{company_id}")
+def update_company(request, company_id: int, payload: CompanyUpdateSchema = Form(...)):
+    request = parseMultipartRequest(request)
+    return CompanyService.update(payload.dict(), request, company_id)
+
+@setting_router.get("/companies/{company_id}")
+def getCompanyById(request, company_id: int):
+    return CompanyService.getById(company_id, request)
+
+# ================================================================= ================================================================= =================================================================
+# Branch CRUD APIs
+# ================================================================= ================================================================= =================================================================
+
+@setting_router.post("/branches/")
+def create_branch(request, payload: BranchCreateSchema):
+    return BranchService.create(payload.dict(), request)
+
+@setting_router.post("/branches/get-transactions")
+def getAllBranches(request, payload: dict = None):
+    return BranchService.getAll(payload, request)
+
+@setting_router.put("/branches/{branch_id}")
+def update_branch(request, branch_id: int, payload: BranchUpdateSchema):
+    return BranchService.update(payload.dict(), request, branch_id)
+
+@setting_router.get("/branches/{branch_id}")
+def getBranchById(request, branch_id: int):
+    return BranchService.getById(branch_id, request)
+
+@setting_router.delete("/branches/delete")
+def deleteBranches(request, payload: DeleteSchema):
+    return BranchService.delete(payload.dict(), request)
+
+@setting_router.get("/branches/switch/{branch_id}")
+def switchBranch(request, branch_id: int):
+    return BranchService.switchBranch(branch_id, request)
+
+@setting_router.get("/branches-dropdown")
+def getBranchDropdown(request):
+    return BranchService.dropdownList(request)

@@ -3,7 +3,7 @@ from django.utils import timezone
 from datetime import timedelta
 import json
 from decimal import Decimal
-from apps.core.helpers import ResponseBuilder, generateSequentialCode
+from apps.core.helpers import ResponseBuilder, generateSequentialCode, getAuthContext
 from .models import Sales, SalesTransaction, CustomerLedger, MonthlyStatement
 from apps.core.tenantQuery import TenantQuery
 from apps.items.service import InventoryService
@@ -568,6 +568,9 @@ class SalesService:
     def getDashboardStats(request):
         try:
             today = timezone.localdate()
+            auth_ctx = getAuthContext(request)
+            print("auth_ctx---------------------------\n",auth_ctx)
+
 
             # Use countRecords and sumRecords for database-level calculations
             total_sales_count = TenantQuery.countRecords(Sales, {}, request)

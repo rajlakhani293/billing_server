@@ -1,14 +1,20 @@
 from django.db import transaction
 from django.utils import timezone
+from django.conf import settings
 import json
 import math
 import datetime
 from decimal import Decimal
-from apps.core.helpers import ResponseBuilder
+from apps.core.helpers import ResponseBuilder, uploadFile
 from .models import Brand, Tax, Party
 from apps.core.tenantQuery import TenantQuery
 from apps.sales.models import CustomerLedger, MonthlyStatement, PaymentHistory
 from apps.sales.service import SalesService
+from apps.company.models import Company, Branch
+from apps.core.models import CountryMaster, StateMaster, CityMaster
+from rest_framework_simplejwt.tokens import RefreshToken
+from apps.accounts.models import User
+from apps.core.helpers import getAuthContext
 
 
 class BrandService:
@@ -500,10 +506,6 @@ class PartyService:
                     request,
                 )
 
-                # Apply payment in current month only
-                # Opening balance from previous month carries forward naturally
-                # Payment reduces current month total; remaining carries to next month as opening balance
-                # Extra payment reduces next month's opening balance
                 SalesService.createLedgerEntry(
                     request,
                     party_id=party_id,
@@ -513,5 +515,229 @@ class PartyService:
                 )
 
                 return ResponseBuilder.success(message="Payment recorded successfully")
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+
+
+class CompanyService:
+    @staticmethod
+    def update(data, request, company_id):
+        try:
+            with transaction.atomic():
+                company_data = data.copy()
+                
+                # Get current company to check for existing logo
+                current_company = TenantQuery.findOneRecord(Company, company_id, {}, request, False)
+                old_logo = None
+                if current_company and current_company.get('logo_image'):
+                    old_logo = current_company['logo_image']
+                    if 'company_logos/' in old_logo:
+                        old_logo = old_logo.split('company_logos/')[-1]
+                
+                logo_field_in_request = False
+                if hasattr(request, 'POST') and 'logo_image' in request.POST:
+                    logo_field_in_request = True
+                
+                # Handle logo_image upload
+                if 'logo_image' in request.FILES:
+                    logo_file = request.FILES.get('logo_image')
+                    saved = uploadFile(logo_file, subfolder='company_logos', old_file_name=old_logo)
+                    file_url = next(iter(saved.values())) if saved else None
+                    if file_url:
+                        company_data['logo_image'] = f"company_logos/{file_url}"
+                elif logo_field_in_request and (data.get('logo_image') is None or data.get('logo_image') == '' or data.get('logo_image') == 'null'):
+                    if old_logo:
+                        from apps.core.helpers import delete_file
+                        delete_file('company_logos', old_logo)
+                    company_data['logo_image'] = None
+                else:
+                    company_data.pop('logo_image', None)
+                
+                # Remove original fields and fetch actual model instances for foreign keys
+                if data.get("country"):
+                    company_data.pop("country", None)
+                    company_data["country"] = CountryMaster.objects.get(id=data.get("country"))
+                if data.get("state"):
+                    company_data.pop("state", None)
+                    company_data["state"] = StateMaster.objects.get(id=data.get("state"))
+                if data.get("city"):
+                    company_data.pop("city", None)
+                    company_data["city"] = CityMaster.objects.get(id=data.get("city"))
+                
+                company = TenantQuery.updateRecordById(Company, company_id, company_data, request)
+                if not company:
+                    raise Exception("Company not found")
+                
+                # Normalize logo_image: convert string "null" to actual None
+                if company.get('logo_image') == 'null':
+                    company['logo_image'] = None
+                
+                # Construct full URL for logo_image if it exists
+                if company.get('logo_image'):
+                    url = str(company['logo_image'])
+                    if not url.startswith('company_logos'):
+                        url = f"company_logos/{url}"
+                    company['logo_image'] = request.build_absolute_uri(settings.MEDIA_URL + url)
+                
+                return ResponseBuilder.success(message="Company updated successfully")
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+
+    @staticmethod
+    def getById(company_id, request):
+        try:
+            company = TenantQuery.findOneRecord(Company, company_id, {}, request)
+            if not company or company.get('status') == 2:
+                raise Exception("Company not found")
+            
+            # Normalize logo_image: convert string "null" to actual None
+            if company.get('logo_image') == 'null':
+                company['logo_image'] = None
+            
+            # Construct full URL for logo_image if it exists
+            if company.get('logo_image'):
+                url = str(company['logo_image'])
+                if not url.startswith('company_logos'):
+                    url = f"company_logos/{url}"
+                company['logo_image'] = request.build_absolute_uri(settings.MEDIA_URL + url)
+            
+            return ResponseBuilder.success(data=company, message="Company retrieved successfully")
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+
+
+class BranchService:
+    @staticmethod
+    def getAll(data, request):
+        try:
+            fieldConfig = [["branch_name", True, True]]
+            options = {
+                'attributes': ['id', 'branch_name', 'company', 'city__name', 'state__name', 'status'],
+                'select_related': ['city', 'state']
+            }
+            result = TenantQuery.fetchPaginatedData(Branch, data, fieldConfig, options, request)
+            return ResponseBuilder.success(data=result, message="Branches retrieved successfully")
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+
+    @staticmethod
+    def create(data, request):
+        try:
+            with transaction.atomic():
+                branch_data = data.copy()
+                
+                # Remove original fields and fetch actual model instances for foreign keys
+                if data.get("country"):
+                    branch_data.pop("country", None)
+                    branch_data["country"] = CountryMaster.objects.get(id=data.get("country"))
+                if data.get("state"):
+                    branch_data.pop("state", None)
+                    branch_data["state"] = StateMaster.objects.get(id=data.get("state"))
+                if data.get("city"):
+                    branch_data.pop("city", None)
+                    branch_data["city"] = CityMaster.objects.get(id=data.get("city"))
+                
+                branch = TenantQuery.createRecord(Branch, branch_data, request)
+                
+                auth_ctx = getAuthContext(request)
+                user_id = auth_ctx.get('user_id')
+                if user_id and branch.get('id'):
+                    user = User.objects.get(id=user_id)
+                    if not user.branch_access:
+                        user.branch_access = []
+                    if branch['id'] not in user.branch_access:
+                        user.branch_access.append(branch['id'])
+                        user.save(update_fields=['branch_access'])
+
+                return ResponseBuilder.success(
+                    data=branch,
+                    message="Branch created successfully"
+                )
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+
+    @staticmethod
+    def update(data, request, branch_id):
+        try:
+            with transaction.atomic():
+                branch = TenantQuery.updateRecordById(Branch, branch_id, data, request)
+                if not branch:
+                    raise Exception("Branch not found")
+                return ResponseBuilder.success(data=branch, message="Branch updated successfully")
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+
+    @staticmethod
+    def getById(branch_id, request):
+        try:
+            branch = TenantQuery.findOneRecord(Branch, branch_id, {}, request)
+            if not branch or branch.get('status') == 2:
+                raise Exception("Branch not found")
+            return ResponseBuilder.success(data=branch, message="Branch retrieved successfully")
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+
+    @staticmethod
+    def delete(data, request):
+        try:
+            with transaction.atomic():
+                count = TenantQuery.softDeleteById(Branch, data.get('ids'), request)
+                if count == 0:
+                    raise Exception("Already deleted")
+                return ResponseBuilder.success(message="Branches deleted successfully")
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+
+    @staticmethod
+    def switchBranch(branch_id, request):
+        try:
+            
+            # Get current auth context
+            ctx = getAuthContext(request)
+            current_user_id = ctx.get('user_id')
+            current_company_id = ctx.get('company_id')
+            
+            # Get the branch
+            branch = TenantQuery.findOneRecord(Branch, branch_id, {}, request, False)
+            if not branch or branch.get('status') == 2:
+                raise Exception("Branch not found")
+            
+            # Validate branch belongs to user's company
+            branch_company_id = branch.get('company') or branch.get('company_id')
+            if branch_company_id != current_company_id:
+                raise Exception("Branch does not belong to your company")
+            
+            # Get user instance
+            user = User.objects.get(id=current_user_id)
+            
+            # Generate new JWT token with branch context
+            refresh = RefreshToken.for_user(user)
+            
+            # Add branch context to token
+            refresh['branch_id'] = branch_id
+            refresh['company_id'] = current_company_id
+            
+            return ResponseBuilder.success(
+                data={
+                    'access': str(refresh.access_token),
+                    'refresh': str(refresh),
+                    'branch_id': branch_id,
+                    'branch_name': branch.get('branch_name')
+                },
+                message="Branch switched successfully"
+            )
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+
+    @staticmethod
+    def dropdownList(request):
+        try:
+            branches = TenantQuery.findAllRecords(
+                Branch,
+                {},
+                {'attributes': ['id', 'branch_name'], 'order': ['branch_name']},
+                request
+            )
+            return ResponseBuilder.success(data=branches, message="Dropdown list retrieved successfully")
         except Exception as e:
             return ResponseBuilder.error(message=str(e), status_code=400)

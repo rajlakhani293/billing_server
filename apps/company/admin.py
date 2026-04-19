@@ -6,8 +6,8 @@ from .models import Company, Branch
 
 @admin.register(Company)
 class CompanyAdmin(admin.ModelAdmin):
-    list_display = ['id','company_code', 'company_name', 'phone_number', 'email', 'owner', 'status', 'created_at']
-    list_filter = ['status', 'created_at']
+    list_display = ['id','company_code', 'company_name', 'business_type_id', 'phone_number', 'email', 'owner', 'status', 'created_at']
+    list_filter = ['status', 'business_type_id', 'created_at']
     search_fields = ['company_code', 'company_name', 'phone_number', 'email', 'pan_no']
     ordering = ['-created_at']
     readonly_fields = ['id', 'created_at', 'updated_at']
@@ -62,7 +62,7 @@ class CompanyAdmin(admin.ModelAdmin):
         super().save_model(request, obj, form, change)
 
     fieldsets = (
-        ('Basic Info', {'fields': ('id','company_code', 'company_name', 'owner')}),
+        ('Basic Info', {'fields': ('id','company_code', 'company_name', 'business_type_id', 'owner')}),
         ('Contact Info', {'fields': ('phone_number', 'email')}),
         ('Tax Info', {'fields': ('pan_no',)}),
         ('Address Info', {'fields': ('address', 'pincode', 'country', 'state', 'city')}),
@@ -73,9 +73,9 @@ class CompanyAdmin(admin.ModelAdmin):
 
 @admin.register(Branch)
 class BranchAdmin(admin.ModelAdmin):
-    list_display = ['id', 'branch_name', 'company', 'phone_number', 'email', 'status', 'created_at']
+    list_display = ['id', 'branch_name', 'company', 'status', 'created_at']
     list_filter = ['status', 'company', 'created_at']
-    search_fields = ['branch_name', 'phone_number', 'email']
+    search_fields = ['branch_name']
     ordering = ['-created_at']
     readonly_fields = ['id', 'created_at', 'updated_at']
 
@@ -118,8 +118,7 @@ class BranchAdmin(admin.ModelAdmin):
 
     fieldsets = (
         ('Basic Info', {'fields': ('id', 'branch_name', 'company')}),
-        ('Contact Info', {'fields': ('phone_number', 'email')}),
-        ('Address Info', {'fields': ('address', 'pincode', 'country', 'state', 'city')}),
+        ('Address Info', {'fields': ('pincode', 'country', 'state', 'city')}),
         ('Settings', {'fields': ('status',)}),
         ('Timestamps', {'fields': ('created_at', 'updated_at')}),
     )

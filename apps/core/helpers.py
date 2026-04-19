@@ -251,6 +251,18 @@ def uploadFile(files, subfolder="", old_file_name=None):
 
     return saved_filenames
 
+def delete_file(subfolder, filename):
+    """Delete a file from the filesystem"""
+    if not filename:
+        return
+    
+    try:
+        file_path = os.path.join(settings.MEDIA_ROOT, subfolder, filename)
+        if default_storage.exists(file_path):
+            default_storage.delete(file_path)
+    except Exception as e:
+        print(f"Failed to delete file {filename}: {e}")
+
 class ResponseBuilder:
     """Standardized response builder for API responses"""
     

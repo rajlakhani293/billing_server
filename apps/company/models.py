@@ -4,9 +4,25 @@ from apps.core.models import TimestampedModel, IntegerModel, CountryMaster, Stat
 
 # Create your models here.
 class Company(IntegerModel, TimestampedModel):
+    BUSINESS_TYPE_CHOICES = [
+        (1, "Retail / Shops"),
+        (2, "Wholesale / Distribution"),
+        (3, "E-commerce / Online Selling"),
+        (4, "Manufacturing"),
+        (5, "Trading"),
+        (6, "Export / Import"),
+        (7, "Services / Consulting"),
+        (8, "IT & Software"),
+        (9, "Construction / Real Estate"),
+        (10, "Healthcare / Medical / Pharma"),
+        (11, "Transport & Logistics"),
+        (12, "Agriculture"),
+        (13, "Others"),
+    ]
+    
     company_code = models.CharField(max_length=150, unique=True)
     company_name = models.CharField(max_length=150, unique=True)
-    business_type_id = models.IntegerField(default=0, blank=True, null=True)
+    business_type_id = models.IntegerField(default=0, blank=True, null=True, choices=BUSINESS_TYPE_CHOICES)
     phone_number = models.CharField(max_length=15, blank=True, null=True)
     email = models.EmailField(unique=True, max_length=255, blank=True, null=True)
     password = models.CharField(max_length=128, null=True, blank=True)
@@ -34,10 +50,6 @@ class Company(IntegerModel, TimestampedModel):
 
 class Branch(IntegerModel, TimestampedModel):
     branch_name = models.CharField(max_length=150)
-    contact_person_name = models.CharField(max_length=150)
-    phone_number = models.CharField(max_length=15)
-    email = models.EmailField(unique=True, max_length=255, blank=True, null=True)
-    address = models.TextField(blank=True, null=True)
     pincode = models.CharField(max_length=10, blank=True, null=True)
     city = models.ForeignKey(CityMaster, on_delete=models.SET_NULL, related_name='branches', null=True, blank=True)
     state = models.ForeignKey(StateMaster, on_delete=models.SET_NULL, related_name='branches', null=True, blank=True)
@@ -50,6 +62,9 @@ class Branch(IntegerModel, TimestampedModel):
         verbose_name = 'Branch'
         verbose_name_plural = 'Branches'
         ordering = ['branch_name']
+        unique_together = [
+            ['branch_name', 'company']
+        ]
 
     def __str__(self):
         try:

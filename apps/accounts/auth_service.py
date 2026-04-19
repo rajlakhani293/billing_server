@@ -309,48 +309,6 @@ class AuthService:
         except Exception as e:
             return ResponseBuilder.error(f'Logout failed: {str(e)}')
 
-    # @staticmethod
-    # def getSessionData(request):
-    #     try:  
-    #         auth_ctx = getAuthContext(request)
-    #         user_id = auth_ctx.get("user_id")
-    #         company_id = auth_ctx.get("company_id")
-    #         branch_id = auth_ctx.get("branch_id")
-
-    #         user_data = TenantQuery.findOneRecord(
-    #             User,
-    #             {"id": user_id},
-    #             {},
-    #             request,
-    #             False,
-    #         )
-
-    #         company_data = TenantQuery.findOneRecord(
-    #             Company,
-    #             {"id": company_id},
-    #             {},
-    #             request,
-    #             False,
-    #         )
-            
-    #         branch_data = TenantQuery.findOneRecord(
-    #             Branch,
-    #             {"id": branch_id},
-    #             {},
-    #             request,
-    #             False,
-    #         )
-            
-    #         return ResponseBuilder.success(
-    #             'Session data retrieved successfully',
-    #             {
-    #                 "user": user_data,
-    #                 "company": company_data,
-    #                 "branch": branch_data,
-    #             },
-    #         )
-    #     except Exception as e:
-    #         return ResponseBuilder.error(f'Failed to get session data: {str(e)}')
 
     @staticmethod
     def getSessionData(request):
@@ -392,12 +350,21 @@ class AuthService:
                 request
             )
             
+            # Fetch all branches for the company
+            branch_list = TenantQuery.findAllRecords(
+                Branch,
+                {"company": company_id},
+                {'attributes': ['id', 'branch_name', 'city__name', 'state__name'], 'order': ['branch_name']},
+                request
+            )
+            
             return ResponseBuilder.success(
                 'Session data retrieved successfully (Optimized)',
                 {
                     "user": user_data,
                     "company": company_data,
                     "branch": branch_data,
+                    "branch_list": branch_list,
                 },
             )
         except Exception as e:
@@ -516,10 +483,6 @@ class CompanyService:
             Branch,
             {
                 "branch_name": branch_name,
-                "contact_person_name": user.user_name,
-                "phone_number": phone_number,
-                "email": email,
-                "address": data.get("address"),
                 "pincode": data.get("pincode"),
                 "country_id": data["country"],
                 "state_id": data["state"],

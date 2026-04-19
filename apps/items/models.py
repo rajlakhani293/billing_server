@@ -82,7 +82,7 @@ class Item(IntegerModel, TimestampedModel):
     # Status and Company
     status = models.IntegerField(default=0, help_text='0: Active, 1: Inactive, 2: Deleted')
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='items', help_text='Associated company')
-    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name='items', null=True, blank=True, help_text='Associated branch')
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name='items', help_text='Associated branch')
     
     class Meta:
         db_table = 'items'
@@ -90,9 +90,9 @@ class Item(IntegerModel, TimestampedModel):
         verbose_name_plural = 'Items'
         ordering = ['item_name']
         unique_together = [
-            ['company', 'branch', 'item_code'], 
-            ['company', 'branch', 'item_name'], 
-            ['company', 'branch', 'barcode']    
+            ['company', 'branch', 'item_code'],
+            ['company', 'branch', 'item_name'],
+            ['company', 'branch', 'barcode']
         ]
         indexes = [
             models.Index(fields=['company', 'branch', 'item_code']),

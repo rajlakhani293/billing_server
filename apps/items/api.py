@@ -114,14 +114,4 @@ def adjustStock(request, payload: StockAdjustmentIn):
 
 @items_router.post('/stock/get-transactions')
 def getStockTransactions(request, payload: dict = None):
-    # Handle JSON parsing if payload is None
-    if payload is None and hasattr(request, 'body'):
-        import json
-        try:
-            payload = json.loads(request.body.decode('utf-8'))
-        except (json.JSONDecodeError, UnicodeDecodeError, AttributeError):
-            payload = {}
-    elif payload is None:
-        payload = {}
-    
     return InventoryService.getStockTransactions(payload, request)
