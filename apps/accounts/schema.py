@@ -15,7 +15,7 @@ class CompanyRegistrationSchema(Schema):
     
     # User Info (for User model)
     user_name: Optional[str] = None
-    email: Optional[str] = None
+    email: str
     password: Optional[str] = None
 
     # Company Info (matching Company model)
@@ -46,5 +46,18 @@ class LogoutSchema(Schema):
 class ResetOTPSchema(Schema):
     phone_number: str
 
+# User Update Schema
+class UserUpdateSchema(Schema):
+    user_name: str
+    email: str
+    phone_number: str
+    profile_image: Optional[str] = None
 
+# User Password Update Schema
+class UserPasswordUpdateSchema(Schema):
+    otp_code: str
+    new_password: str
 
+# Send Password OTP Schema
+class SendPasswordOTPSchema(Schema):
+    phone_number: str

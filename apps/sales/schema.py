@@ -103,8 +103,30 @@ class SalesIn(Schema):
 class SalesUpdateIn(Schema):
     return_notes: Optional[str] = None
     update_notes: Optional[str] = None
+    paid_amount: Optional[Decimal] = None
+    payment_mode: Optional[int] = None
     return_transactions: Optional[List[SalesReturnTransactionIn]] = []
     add_transactions: Optional[List[SalesTransactionSchema]] = []
+
+    @field_validator('payment_mode', mode='before')
+    @classmethod
+    def validate_update_payment_mode(cls, v):
+        if v == "" or v is None:
+            return None
+        try:
+            return int(v)
+        except (ValueError, TypeError):
+            raise ValueError("Payment mode must be a valid integer")
+
+    @field_validator('paid_amount', mode='before')
+    @classmethod
+    def validate_update_paid_amount(cls, v):
+        if v == "" or v is None:
+            return None
+        try:
+            return Decimal(str(v))
+        except (ValueError, TypeError):
+            raise ValueError("Paid amount must be a valid decimal number")
 
 class SalesRevertIn(Schema):
     notes: Optional[str] = None

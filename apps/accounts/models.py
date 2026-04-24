@@ -35,11 +35,6 @@ class User(AbstractBaseUser, PermissionsMixin, IntegerModel, TimestampedModel):
     phone_number = models.CharField(max_length=15, unique=True)
     email = models.EmailField(unique=True, max_length=255, blank=True, null=True)
     password = models.CharField(max_length=128, null=True, blank=True)
-    address = models.CharField(max_length=255, blank=True, null=True)
-    city = models.ForeignKey(CityMaster, on_delete=models.SET_NULL, null=True, blank=True)
-    state = models.ForeignKey(StateMaster, on_delete=models.SET_NULL, null=True, blank=True)
-    country = models.ForeignKey(CountryMaster, on_delete=models.SET_NULL, null=True, blank=True)
-    pincode = models.CharField(max_length=10, blank=True, null=True)
     profile_image = models.ImageField(upload_to='profile_images', blank=True, null=True)
     is_staff = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
@@ -65,11 +60,9 @@ class User(AbstractBaseUser, PermissionsMixin, IntegerModel, TimestampedModel):
         return str(self.phone_number)
 
     def get_short_name(self):
-        """Return the short name for the user."""
         return self.user_name or str(self.phone_number)
 
     def save(self, *args, **kwargs):
-        # Ensure password is never None for authentication
         if self.password is None or self.password == '':
             self.password = make_password('admin123')
         super().save(*args, **kwargs)

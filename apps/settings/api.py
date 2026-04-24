@@ -5,8 +5,9 @@ from apps.accounts.auth_service import AuthService
 from apps.core.auth import AuthBearer
 from apps.core.schema import DeleteSchema, PartyCreditDaysSchema
 from .schema import BrandCreateSchema, BrandUpdateSchema, TaxCreateSchema, TaxUpdateSchema, PartyCreateSchema, PartyUpdateSchema, PartyPaymentSchema
-from .service import BrandService, TaxService, PartyService, CompanyService, BranchService
+from .service import BrandService, TaxService, PartyService, CompanyService, BranchService, UserService
 from apps.company.schema import CompanyUpdateSchema, BranchCreateSchema, BranchUpdateSchema
+from apps.accounts.schema import UserUpdateSchema, UserPasswordUpdateSchema, SendPasswordOTPSchema
 from apps.core.helpers import parseMultipartRequest
 
 
@@ -154,6 +155,27 @@ def update_company(request, company_id: int, payload: CompanyUpdateSchema = Form
 @setting_router.get("/companies/{company_id}")
 def getCompanyById(request, company_id: int):
     return CompanyService.getById(company_id, request)
+
+# ================================================================= ================================================================= =================================================================
+# User CRUD APIs
+# ================================================================= ================================================================= =================================================================
+
+@setting_router.post("/users/send-password-otp")
+def send_password_otp(request, payload: SendPasswordOTPSchema):
+    return UserService.sendPasswordOTP(payload.phone_number, request)
+
+@setting_router.post("/users/update-password")
+def update_user_password(request, payload: UserPasswordUpdateSchema):
+    return UserService.updatePasswordWithOTP(payload.dict(), request)
+
+@setting_router.put("/users/{user_id}")
+def update_user(request, user_id: int, payload: UserUpdateSchema = Form(...)):
+    request = parseMultipartRequest(request)
+    return UserService.update(payload.dict(), request, user_id)
+
+@setting_router.get("/users/{user_id}")
+def getUserById(request, user_id: int):
+    return UserService.getById(user_id, request)
 
 # ================================================================= ================================================================= =================================================================
 # Branch CRUD APIs

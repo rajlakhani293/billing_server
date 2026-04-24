@@ -10,7 +10,7 @@ class CompanyUpdateSchema(Schema):
     company_name: str
     business_type_id: Optional[int] = None
     phone_number: str
-    email: Optional[str] = None
+    email: str
     tax_no: Optional[str] = None
     pan_no: Optional[str] = None
     address: Optional[str] = None

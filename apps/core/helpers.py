@@ -366,31 +366,33 @@ def normalizePhoneNumber(phone_number: str) -> str:
 
 def generateOtp(phone_number: str, validity_minutes: int = 5, otp_type: str = 'LOGIN'):
     """Generate OTP with rate limiting - block for 1 hour if 3 OTPs requested within last hour"""
-    one_hour_ago = timezone.now() - timedelta(hours=1)
-    
-    # Count OTPs requested in the last hour
-    request_count = OTP.objects.filter(
-        phone_number=phone_number,
-        created_at__gte=one_hour_ago
-    ).count()
+    # Skip limit check for password reset
+    if otp_type != 'FORGOT-PASSWORD':
+        one_hour_ago = timezone.now() - timedelta(hours=1)
 
-    if request_count >= 3:
-        # Get the most recent OTP record to check block time
-        recent = OTP.objects.filter(phone_number=phone_number).first()
-        if recent:
-            # Set block time if not already set
-            if not recent.blocked_until:
-                recent.blocked_until = timezone.now() + timedelta(hours=1)
-                recent.save()
-            
-            # Calculate remaining time
-            remaining_seconds = recent.get_block_remaining_time()
-            if remaining_seconds > 0:
-                remaining_minutes = remaining_seconds // 60
-                remaining_seconds_mod = remaining_seconds % 60
-                raise Exception(f"OTP Limit reached. Try again after {remaining_minutes} minutes and {remaining_seconds_mod} seconds.")
-        else:
-            raise Exception("OTP Limit reached. Try again after 1 hour.")
+        # Count OTPs requested in the last hour
+        request_count = OTP.objects.filter(
+            phone_number=phone_number,
+            created_at__gte=one_hour_ago
+        ).count()
+
+        if request_count >= 3:
+            # Get the most recent OTP record to check block time
+            recent = OTP.objects.filter(phone_number=phone_number).first()
+            if recent:
+                # Set block time if not already set
+                if not recent.blocked_until:
+                    recent.blocked_until = timezone.now() + timedelta(hours=1)
+                    recent.save()
+
+                # Calculate remaining time
+                remaining_seconds = recent.get_block_remaining_time()
+                if remaining_seconds > 0:
+                    remaining_minutes = remaining_seconds // 60
+                    remaining_seconds_mod = remaining_seconds % 60
+                    raise Exception(f"OTP Limit reached. Try again after {remaining_minutes} minutes and {remaining_seconds_mod} seconds.")
+            else:
+                raise Exception("OTP Limit reached. Try again after 1 hour.")
 
     # Generate new OTP
     secret = pyotp.random_base32()

@@ -103,8 +103,8 @@ class SalesService:
         if not party:
             return None
 
-        # entry_date = entry_date or timezone.localdate()
-        entry_date = datetime.date(2026, 6, 10)
+        entry_date = entry_date or timezone.localdate()
+        # entry_date = datetime.date(2026, 6, 10)
 
         # Ensure opening balance exists before first transaction in a month
         if note != SalesService.OPENING_BALANCE_NOTE:
@@ -260,8 +260,8 @@ class SalesService:
             with transaction.atomic():
                 # Extract transactions data
                 transactions_data = payload.pop('transactions', [])
-                # payload["sales_date"] = timezone.localdate()
-                payload["sales_date"] = datetime.date(2026, 6, 10)
+                payload["sales_date"] = timezone.localdate()
+                # payload["sales_date"] = datetime.date(2026, 6, 10)
 
                 total_amount = Decimal(str(payload.get('total_amount', "0.00")))
                 paid_amount_raw = payload.get('paid_amount', "0.00")
@@ -408,8 +408,17 @@ class SalesService:
 
                 add_lines = payload.get("add_transactions") or []
                 return_lines = payload.get("return_transactions") or []
-                if not add_lines and not return_lines:
-                    raise Exception("At least one return or add item is required")
+                has_payment_update = payload.get("payment_mode") not in [None, ""] or payload.get("paid_amount") not in [None, ""]
+                has_note_update = bool(str(payload.get("return_notes") or "").strip() or str(payload.get("update_notes") or "").strip())
+                if not add_lines and not return_lines and not has_payment_update and not has_note_update:
+                    raise Exception("Add an item, enter a return quantity, update payment details, or add notes")
+
+                old_due_amount = Decimal("0.00")
+                if sales.payment_mode == 3 and sales.party_id:
+                    old_due_amount = max(
+                        Decimal("0.00"),
+                        Decimal(str(sales.total_amount or "0.00")) - Decimal(str(sales.paid_amount or "0.00")),
+                    )
 
                 total_return_amount = Decimal("0.00")
                 added_subtotal = Decimal("0.00")
@@ -506,34 +515,42 @@ class SalesService:
                         added_discount += line_discount
                         added_total += line_total
 
-                    if sales.payment_mode == 3 and sales.party_id and added_total > 0:
-                        SalesService.createLedgerEntry(
-                            request,
-                            party_id=sales.party_id,
-                            amount=added_total,
-                            sales_id=sales.id,
-                            note=f"Sales update {sales.sales_code}",
-                        )
-
                 if total_return_amount > 0:
                     sales.total_amount = max(Decimal("0.00"), sales.total_amount - total_return_amount)
                     if sales.paid_amount > sales.total_amount:
                         sales.paid_amount = sales.total_amount
-
-                    if sales.payment_mode == 3 and sales.party_id:
-                        SalesService.createLedgerEntry(
-                            request,
-                            party_id=sales.party_id,
-                            amount=-total_return_amount,
-                            sales_id=sales.id,
-                            note=f"Sales return for {sales.sales_code}",
-                        )
 
                 if added_total > 0:
                     sales.subtotal = (sales.subtotal or Decimal("0.00")) + added_subtotal
                     sales.tax_amount = (sales.tax_amount or Decimal("0.00")) + added_tax
                     sales.discount_amount = (sales.discount_amount or Decimal("0.00")) + added_discount
                     sales.total_amount = (sales.total_amount or Decimal("0.00")) + added_total
+
+                next_payment_mode = payload.get("payment_mode")
+                if next_payment_mode in [None, ""]:
+                    next_payment_mode = sales.payment_mode
+                else:
+                    next_payment_mode = int(next_payment_mode)
+
+                if next_payment_mode == 3 and not sales.party_id:
+                    raise Exception("Party is required when payment mode is Partial")
+
+                incoming_paid_amount = payload.get("paid_amount")
+                if incoming_paid_amount in [None, ""]:
+                    next_paid_amount = Decimal(str(sales.paid_amount or "0.00"))
+                else:
+                    next_paid_amount = Decimal(str(incoming_paid_amount))
+
+                if next_paid_amount < 0:
+                    raise Exception("Paid amount cannot be negative")
+
+                if next_payment_mode == 3:
+                    next_paid_amount = min(next_paid_amount, Decimal(str(sales.total_amount or "0.00")))
+                else:
+                    next_paid_amount = Decimal(str(sales.total_amount or "0.00"))
+
+                sales.payment_mode = next_payment_mode
+                sales.paid_amount = next_paid_amount
 
                 return_note = str(payload.get("return_notes") or "").strip()
                 update_note = str(payload.get("update_notes") or "").strip()
@@ -548,8 +565,29 @@ class SalesService:
                     else:
                         sales.notes = f"[UPDATE] {update_note}"
 
+                new_due_amount = Decimal("0.00")
+                if sales.payment_mode == 3 and sales.party_id:
+                    new_due_amount = max(
+                        Decimal("0.00"),
+                        Decimal(str(sales.total_amount or "0.00")) - Decimal(str(sales.paid_amount or "0.00")),
+                    )
+
+                due_delta = new_due_amount - old_due_amount
+                if due_delta != 0 and sales.party_id:
+                    note = f"Sales update {sales.sales_code}"
+                    if total_return_amount > 0 and added_total == 0:
+                        note = f"Sales return for {sales.sales_code}"
+
+                    SalesService.createLedgerEntry(
+                        request,
+                        party_id=sales.party_id,
+                        amount=due_delta,
+                        sales_id=sales.id,
+                        note=note,
+                    )
+
                 sales.balance_amount = max(Decimal("0.00"), sales.total_amount - sales.paid_amount)
-                sales.save(update_fields=["subtotal", "tax_amount", "discount_amount", "total_amount", "paid_amount", "balance_amount", "notes", "updated_at"])
+                sales.save(update_fields=["subtotal", "tax_amount", "discount_amount", "total_amount", "paid_amount", "payment_mode", "balance_amount", "notes", "updated_at"])
 
                 return ResponseBuilder.success(
                     message="Sales updated successfully",

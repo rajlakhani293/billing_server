@@ -74,7 +74,6 @@ class UserAdmin(BaseUserAdmin):
     fieldsets = (
         (None, {'fields': ('phone_number', 'password')}),
         ('Personal Info', {'fields': ('id','email', 'user_name')}),
-        ('Address Info', {'fields': ('address', 'country', 'state', 'city', 'pincode')}),
         ('Company Info', {'fields': ('company', 'branch', 'branch_access')}),
         ('Permissions', {'fields': ('is_verified', 'is_active', 'is_staff', 'is_superuser', 'user_lock', 'status', 'groups', 'user_permissions')}),
         ('Important dates', {'fields': ('last_login', 'created_at', 'updated_at')}),
@@ -83,7 +82,7 @@ class UserAdmin(BaseUserAdmin):
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('phone_number', 'password1', 'password2', 'email', 'user_name', 'is_verified', 'company', 'branch', 'branch_access', 'address', 'country', 'state', 'city', 'pincode', 'profile_image', 'is_active', 'user_lock', 'status'),
+            'fields': ('phone_number', 'password1', 'password2', 'email', 'user_name', 'is_verified', 'company', 'branch', 'branch_access', 'profile_image', 'is_active', 'user_lock', 'status'),
         }),
     )
 

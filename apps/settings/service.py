@@ -13,9 +13,8 @@ from apps.sales.service import SalesService
 from apps.company.models import Company, Branch
 from apps.core.models import CountryMaster, StateMaster, CityMaster
 from rest_framework_simplejwt.tokens import RefreshToken
-from apps.accounts.models import User
-from apps.core.helpers import getAuthContext
-
+from apps.accounts.models import User, OTP
+from apps.core.helpers import getAuthContext, normalizePhoneNumber, generateOtp
 
 class BrandService:
     @staticmethod
@@ -602,6 +601,156 @@ class CompanyService:
                 company['logo_image'] = request.build_absolute_uri(settings.MEDIA_URL + url)
             
             return ResponseBuilder.success(data=company, message="Company retrieved successfully")
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+
+
+class UserService:
+    @staticmethod
+    def update(data, request, user_id):
+        try:
+            with transaction.atomic():
+                user_data = data.copy()
+                
+                # Get current user to check for existing profile image
+                current_user = TenantQuery.findOneRecord(User, user_id, {}, request, False)
+                old_profile_image = None
+                if current_user and current_user.get('profile_image'):
+                    old_profile_image = current_user['profile_image']
+                    if 'profile_images/' in old_profile_image:
+                        old_profile_image = old_profile_image.split('profile_images/')[-1]
+                
+                profile_image_field_in_request = False
+                if hasattr(request, 'POST') and 'profile_image' in request.POST:
+                    profile_image_field_in_request = True
+                
+                # Handle profile_image upload
+                if 'profile_image' in request.FILES:
+                    profile_image_file = request.FILES.get('profile_image')
+                    saved = uploadFile(profile_image_file, subfolder='profile_images', old_file_name=old_profile_image)
+                    file_url = next(iter(saved.values())) if saved else None
+                    if file_url:
+                        user_data['profile_image'] = f"profile_images/{file_url}"
+                elif profile_image_field_in_request and (data.get('profile_image') is None or data.get('profile_image') == '' or data.get('profile_image') == 'null'):
+                    if old_profile_image:
+                        from apps.core.helpers import delete_file
+                        delete_file('profile_images', old_profile_image)
+                    user_data['profile_image'] = None
+                else:
+                    user_data.pop('profile_image', None)
+                
+                # Remove original fields and fetch actual model instances for foreign keys
+                if data.get("country"):
+                    user_data.pop("country", None)
+                    user_data["country"] = CountryMaster.objects.get(id=data.get("country"))
+                if data.get("state"):
+                    user_data.pop("state", None)
+                    user_data["state"] = StateMaster.objects.get(id=data.get("state"))
+                if data.get("city"):
+                    user_data.pop("city", None)
+                    user_data["city"] = CityMaster.objects.get(id=data.get("city"))
+                
+                # Handle password update if provided
+                if data.get("password"):
+                    user_data.pop("password", None)
+                    # Get the user instance to set password
+                    user_instance = User.objects.get(id=user_id)
+                    user_instance.set_password(data.get("password"))
+                    user_instance.save()
+                
+                user = TenantQuery.updateRecordById(User, user_id, user_data, request)
+                if not user:
+                    raise Exception("User not found")
+                
+                # Normalize profile_image: convert string "null" to actual None
+                if user.get('profile_image') == 'null':
+                    user['profile_image'] = None
+                
+                # Construct full URL for profile_image if it exists
+                if user.get('profile_image'):
+                    url = str(user['profile_image'])
+                    if not url.startswith('profile_images'):
+                        url = f"profile_images/{url}"
+                    user['profile_image'] = request.build_absolute_uri(settings.MEDIA_URL + url)
+                
+                return ResponseBuilder.success(message="User updated successfully")
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+
+    @staticmethod
+    def getById(user_id, request):
+        try:
+            user = TenantQuery.findOneRecord(User, user_id, {}, request)
+            if not user or user.get('status') == 2:
+                raise Exception("User not found")
+            
+            # Normalize profile_image: convert string "null" to actual None
+            if user.get('profile_image') == 'null':
+                user['profile_image'] = None
+            
+            # Construct full URL for profile_image if it exists
+            if user.get('profile_image'):
+                url = str(user['profile_image'])
+                if not url.startswith('profile_images'):
+                    url = f"profile_images/{url}"
+                user['profile_image'] = request.build_absolute_uri(settings.MEDIA_URL + url)
+            
+            return ResponseBuilder.success(data=user, message="User retrieved successfully")
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+
+    @staticmethod
+    def sendPasswordOTP(phone_number, request):
+        try:
+            phone = normalizePhoneNumber(phone_number)
+            otp_instance = generateOtp(phone, otp_type='FORGOT-PASSWORD')
+            
+            return ResponseBuilder.success(
+                message="OTP sent successfully for password update",
+                data={"otp_code": otp_instance.otp_code}
+            )
+        except Exception as e:
+            return ResponseBuilder.error(message=str(e), status_code=400)
+
+    @staticmethod
+    def updatePasswordWithOTP(data, request):
+        try:
+            phone_number = normalizePhoneNumber(data.get('phone_number'))
+            otp_code = data.get('otp_code')
+            new_password = data.get('new_password')
+
+            # Get user instance by phone number
+            try:
+                user_instance = User.objects.get(phone_number=phone_number)
+            except User.DoesNotExist:
+                raise Exception("User not found with this phone number")
+            phone = user_instance.phone_number
+            
+            # Get the OTP instance for this user's phone number
+            otp_instance = OTP.objects.filter(phone_number=phone).order_by('-created_at').first()
+            if not otp_instance:
+                raise Exception("OTP not found or expired. Please request a new OTP.")
+            
+            # Check if OTP was already used
+            if otp_instance.is_verified:
+                raise Exception("OTP has already been used. Please request a new OTP.")
+            
+            # Verify the OTP
+            if not otp_instance.verify(otp_code):
+                raise Exception("Invalid OTP code")
+            
+            # Mark OTP as verified
+            otp_instance.is_verified = True
+            otp_instance.save()
+            
+            # Update password
+            user_instance.set_password(new_password)
+            user_instance.save()
+            
+            # Delete the OTP after successful password update
+            otp_instance.delete()
+            
+            return ResponseBuilder.success(message="Password updated successfully")
         except Exception as e:
             return ResponseBuilder.error(message=str(e), status_code=400)
 

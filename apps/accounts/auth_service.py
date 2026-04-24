@@ -331,17 +331,26 @@ class AuthService:
             if user_data:
                 user_data['has_password'] = User.objects.filter(id=user_id).exclude(password__isnull=True).exclude(password='').exists()
 
+                # Convert profile_image to full URL
+                if user_data.get('profile_image'):
+                    url = str(user_data['profile_image'])
+                    if not url.startswith('profile_images'):
+                        url = f"profile_images/{url}"
+                    user_data['profile_image'] = request.build_absolute_uri(settings.MEDIA_URL + url)
+
             company_data = TenantQuery.findOneRecord(
                 Company,
                 {"id": company_id},
                 {},
                 request
             )
-            
-            # Convert logo_image to string URL
+
+            # Convert logo_image to full URL
             if company_data and company_data.get('logo_image'):
-                company_data['logo_image_url'] = str(company_data['logo_image'])
-                del company_data['logo_image']
+                url = str(company_data['logo_image'])
+                if not url.startswith('company_logos'):
+                    url = f"company_logos/{url}"
+                company_data['logo_image'] = request.build_absolute_uri(settings.MEDIA_URL + url)
 
             branch_data = TenantQuery.findOneRecord(
                 Branch,
@@ -425,8 +434,6 @@ class CompanyService:
     @staticmethod
     def createUserCompanyBranch(data: dict, phone_number: str) -> tuple[User, Company]:
         email = data.get("email")
-        if email == "" or email is None:
-            email = None
         
         user = TenantQuery.createRecord(
             User,
@@ -434,11 +441,6 @@ class CompanyService:
                 "phone_number": phone_number,
                 "user_name": "Super User",
                 "email": email,
-                "country_id": data.get("country"),
-                "state_id": data.get("state"),
-                "city_id": data.get("city"),
-                "address": data.get("address"),
-                "pincode": data.get("pincode"),
                 "is_verified": True,
                 "is_superuser": False,
                 "is_staff": True,
@@ -446,10 +448,6 @@ class CompanyService:
             None,
             False,
         )
-
-        if data.get("password"):
-            user.set_password(data["password"])
-            user.save()
 
         # Generate unique company code
         company_code = CompanyService.generateCompanyCode(data["company_name"])
@@ -520,8 +518,8 @@ class CompanyService:
                 'is_verified': user.is_verified,
                 'is_staff': user.is_staff,
                 'is_superuser': user.is_superuser,
-                'has_password': bool(user.password),
-                'profile_image_url': None
+                # 'has_password': bool(user.password),
+                # 'profile_image_url': None
             },
             'company': {
                 'id': company.id,
@@ -536,7 +534,6 @@ class CompanyService:
                 'state': company.state_id,
                 'country': company.country_id,
                 'logo_image_url': str(company.logo_image) if company.logo_image else None,
-                'status': company.status,
             }
         }
         
@@ -545,15 +542,11 @@ class CompanyService:
             response_data['branch'] = {
                 'id': branch.id,
                 'branch_name': branch.branch_name,
-                'contact_person_name': branch.contact_person_name,
-                'phone_number': branch.phone_number,
-                'email': branch.email,
                 'address': branch.address,
                 'pincode': branch.pincode,
                 'city': branch.city_id,
                 'state': branch.state_id,
                 'country': branch.country_id,
-                'status': branch.status,
                 'company': branch.company_id,
             }
         
