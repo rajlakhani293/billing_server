@@ -15,6 +15,35 @@ class SalesService:
     OPENING_BALANCE_NOTE = "Opening Balance"
 
     @staticmethod
+    def applyPartyBalanceDelta(request, party_id, amount_delta):
+        if not party_id or amount_delta == 0:
+            return
+
+        party = TenantQuery.findOneRecordForUpdate(
+            Party, {"id": party_id}, request
+        )
+        if not party:
+            return
+
+        stored_amount = Decimal(str(party.current_balance or "0.00"))
+        balance_type = party.balance_type or 1
+        signed_balance = stored_amount if balance_type == 1 else -stored_amount
+
+        new_signed = signed_balance + Decimal(str(amount_delta))
+
+        if new_signed > 0:
+            party.balance_type = 1
+            party.current_balance = new_signed
+        elif new_signed < 0:
+            party.balance_type = 2
+            party.current_balance = abs(new_signed)
+        else:
+            party.balance_type = None
+            party.current_balance = Decimal("0.00")
+
+        party.save(update_fields=["current_balance", "balance_type", "updated_at"])
+
+    @staticmethod
     def getOpeningBalanceBeforeDate(party_id, cutoff_date):
         if not party_id or not cutoff_date:
             return Decimal("0.00")
@@ -189,6 +218,85 @@ class SalesService:
         )
 
         statement.save(update_fields=["month_due_total", "month_paid_total", "closing_balance", "updated_at"])
+
+    @staticmethod
+    def syncSaleLedgerAndMonthlyStatement(request, sales, due_amount):
+        if not sales.party_id or not sales.sales_date:
+            return
+
+        first_day = sales.sales_date.replace(day=1)
+        next_month_year = sales.sales_date.year + (1 if sales.sales_date.month == 12 else 0)
+        next_month = 1 if sales.sales_date.month == 12 else sales.sales_date.month + 1
+        next_month_first = sales.sales_date.replace(year=next_month_year, month=next_month, day=1)
+
+        ledger_entry = CustomerLedger.objects.select_for_update().filter(
+            party_id=sales.party_id,
+            sales_id=sales.id,
+        ).exclude(note=SalesService.OPENING_BALANCE_NOTE).order_by("id").first()
+
+        if ledger_entry:
+            ledger_entry.amount = due_amount
+            ledger_entry.date = sales.sales_date
+            ledger_entry.month = sales.sales_date.month
+            ledger_entry.year = sales.sales_date.year
+            ledger_entry.note = ledger_entry.note or f"Sales invoice {sales.sales_code}"
+            ledger_entry.save(update_fields=["amount", "date", "month", "year", "note", "updated_at"])
+        elif due_amount > 0:
+            TenantQuery.createRecord(
+                CustomerLedger,
+                {
+                    "party_id": sales.party_id,
+                    "sales_id": sales.id,
+                    "amount": due_amount,
+                    "date": sales.sales_date,
+                    "month": sales.sales_date.month,
+                    "year": sales.sales_date.year,
+                    "note": f"Sales invoice {sales.sales_code}",
+                },
+                request,
+            )
+
+        party = TenantQuery.findOneRecordForUpdate(
+            Party, {"id": sales.party_id}, request
+        )
+        if not party:
+            return
+
+        statement = TenantQuery.findOneRecordForUpdate(
+            MonthlyStatement,
+            {"party_id": sales.party_id, "month": sales.sales_date.month, "year": sales.sales_date.year},
+            request,
+        )
+
+        if not statement:
+            opening_balance = SalesService.getOpeningBalanceBeforeDate(sales.party_id, first_day)
+            statement = MonthlyStatement.objects.create(
+                party_id=sales.party_id,
+                month=sales.sales_date.month,
+                year=sales.sales_date.year,
+                opening_balance=opening_balance,
+                month_due_total=Decimal("0.00"),
+                month_paid_total=Decimal("0.00"),
+                closing_balance=opening_balance,
+                company_id=party.company_id,
+                branch_id=party.branch_id,
+            )
+
+        month_entries = CustomerLedger.objects.filter(
+            party_id=sales.party_id,
+            date__gte=first_day,
+            date__lt=next_month_first,
+        ).exclude(note=SalesService.OPENING_BALANCE_NOTE)
+
+        statement.month_due_total = Decimal(
+            str(month_entries.filter(amount__gte=0).aggregate(total=models.Sum("amount")).get("total") or 0)
+        )
+        statement.closing_balance = (
+            Decimal(str(statement.opening_balance or "0.00"))
+            + Decimal(str(statement.month_due_total or "0.00"))
+            - Decimal(str(statement.month_paid_total or "0.00"))
+        )
+        statement.save(update_fields=["month_due_total", "closing_balance", "updated_at"])
 
     @staticmethod
     def generateMonthlyStatementForParty(party, year, month, allow_zero=False):
@@ -376,14 +484,14 @@ class SalesService:
     def getInvoiceView(sales_id, request):
         try:
             sales = TenantQuery.findOneRecord(
-                Sales, 
-                {"id": sales_id}, 
+                Sales,
+                {"id": sales_id},
                 {
                     "include": [
-                        {"model": SalesTransaction, "as": "transactions"},
-                        {"model": Party, "as": "party"},
+                        {"path": "transactions", "include": [{"path": "item", "fields": ["item_name", "item_code"]}]},
+                        {"path": "party"},
                     ],
-                }, 
+                },
                 request
             )
 
@@ -574,20 +682,15 @@ class SalesService:
 
                 due_delta = new_due_amount - old_due_amount
                 if due_delta != 0 and sales.party_id:
-                    note = f"Sales update {sales.sales_code}"
-                    if total_return_amount > 0 and added_total == 0:
-                        note = f"Sales return for {sales.sales_code}"
-
-                    SalesService.createLedgerEntry(
+                    SalesService.applyPartyBalanceDelta(
                         request,
                         party_id=sales.party_id,
-                        amount=due_delta,
-                        sales_id=sales.id,
-                        note=note,
+                        amount_delta=due_delta,
                     )
 
                 sales.balance_amount = max(Decimal("0.00"), sales.total_amount - sales.paid_amount)
                 sales.save(update_fields=["subtotal", "tax_amount", "discount_amount", "total_amount", "paid_amount", "payment_mode", "balance_amount", "notes", "updated_at"])
+                SalesService.syncSaleLedgerAndMonthlyStatement(request, sales, new_due_amount)
 
                 return ResponseBuilder.success(
                     message="Sales updated successfully",
