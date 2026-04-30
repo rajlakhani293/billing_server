@@ -10,6 +10,7 @@ from apps.items.service import InventoryService
 from apps.items.models import Item
 from apps.settings.models import Party
 import datetime
+from apps.items.models import StockLedger
 
 class SalesService:
     OPENING_BALANCE_NOTE = "Opening Balance"
@@ -710,8 +711,6 @@ class SalesService:
         try:
             today = timezone.localdate()
             auth_ctx = getAuthContext(request)
-            print("auth_ctx---------------------------\n",auth_ctx)
-
 
             # Use countRecords and sumRecords for database-level calculations
             total_sales_count = TenantQuery.countRecords(Sales, {}, request)
@@ -863,34 +862,44 @@ class SalesService:
             days = int((payload or {}).get("days") or 30)
             limit = int((payload or {}).get("limit") or 5)
             today = timezone.localdate()
-            start_date = today - timedelta(days=days)
+            start_datetime = timezone.make_aware(timezone.datetime.combine(today - timedelta(days=days), timezone.datetime.min.time()))
 
-            tx_rows = TenantQuery.findAllRecords(
-                SalesTransaction,
+            # Get all SALE and SALES_RETURN entries within date range
+            ledger_rows = TenantQuery.findAllRecords(
+                StockLedger,
                 {
-                    "sales__status": 0,
-                    "sales__sales_date__gte": start_date,
+                    "movement_type__in": ["SALE", "SALES_RETURN"],
+                    "created_at__gte": start_datetime,
                 },
-                {"attributes": ["item_id", "item__item_name", "item_quantity", "total_amount"]},
+                {"attributes": ["item_id", "item__item_name", "movement_type", "quantity"]},
                 request,
             )
 
             agg = {}
-            for row in tx_rows:
+            for row in ledger_rows:
                 item_id = row.get("item_id")
                 if not item_id:
                     continue
+                movement_type = row.get("movement_type")
+                quantity = row.get("quantity") or Decimal("0.00")
+
                 if item_id not in agg:
                     agg[item_id] = {
                         "item_id": item_id,
                         "item__item_name": row.get("item__item_name"),
                         "total_sold": Decimal("0.00"),
-                        "total_revenue": Decimal("0.00"),
                     }
-                agg[item_id]["total_sold"] += row.get("item_quantity") or Decimal("0.00")
-                agg[item_id]["total_revenue"] += row.get("total_amount") or Decimal("0.00")
 
-            items = sorted(agg.values(), key=lambda x: x["total_revenue"], reverse=True)[:limit]
+                # SALE adds to count, SALES_RETURN subtracts
+                if movement_type == "SALE":
+                    agg[item_id]["total_sold"] += quantity
+                elif movement_type == "SALES_RETURN":
+                    agg[item_id]["total_sold"] -= quantity
+
+            # Remove items with zero or negative sales
+            items = [v for v in agg.values() if v["total_sold"] > 0]
+            items = sorted(items, key=lambda x: x["total_sold"], reverse=True)[:limit]
+
             return ResponseBuilder.success(
                 data=items,
                 message="Top products retrieved successfully",
